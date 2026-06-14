@@ -97,10 +97,14 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 - `__main__.py` — thin argparse wrapper over `pipeline`.
 
 **The `ingest` cycle** (`pipeline.ingest`, the heart of the loop):
-`embed → dedup (cosine > τ=0.92) → place into MAP-Elites niches → geometric k-NN novelty →
+`embed → dedup (cosine > per-embedder τ) → place into MAP-Elites niches → geometric k-NN novelty →
 keep one elite per niche → DPP diverse slate → anti-collapse monitor`.
 Subtlety worth preserving: the **monitor runs on the RAW pre-dedup generation vectors**, so a
 near-duplicate batch still registers as collapsing instead of being hidden behind survivors.
+Two thresholds that used to be fixed constants are now **calibrated**: the dedup τ is per-embedder
+(`embed.default_dedup_tau`), and the monitor's similarity flag is relative to a rolling window of
+recent generations' mean cosine (`baseline + margin`, with an absolute safety ceiling), falling back
+to the absolute threshold until the window has enough samples.
 
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of

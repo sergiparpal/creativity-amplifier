@@ -20,8 +20,10 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   family from Claude — so "what's novel" isn't judged by the same lineage that
   generated the ideas.
 - **An anti-collapse monitor that's never bypassed.** Shannon entropy over niche
-  occupancy + mean pairwise cosine flag convergence; when it fires, the skill
-  raises diversity pressure next round.
+  occupancy + mean pairwise cosine flag convergence; the similarity signal is
+  **calibrated to a rolling baseline** (and the dedup threshold is per-embedder),
+  so it doesn't misfire when the embedder or domain changes. When it fires, the
+  skill raises diversity pressure next round.
 - **Axes resolved per session.** "Domain-agnostic" doesn't remove the need for
   descriptor axes — it resolves them per session (named domain → inferred &
   confirmed → generic fallback). Nothing about a domain is baked into the plugin.

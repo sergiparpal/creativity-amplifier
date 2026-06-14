@@ -100,7 +100,7 @@ For the open axis —the main carrier of novelty— a `CVTNicher` provides a **d
 
 **Diverse slate via DPP.** Over the current elites a PSD kernel `L = diag(q)·(XXᵀ)·diag(q) + jitter·I` is built, where `XXᵀ` is the Gram matrix (always PSD) and `q` weights by quality to balance diversity against per-item quality. The slate is obtained with fast greedy MAP inference for the DPP [13], maximizing the marginal gain in log-determinant —geometrically, the volume the subset spans— with a fallback to *farthest-point sampling* if anything degenerates. The default slate size is 6; the *pool* is capped at 200 elites for latency, prioritized by novelty.
 
-**Anti-collapse monitor.** Two complementary signals decide whether the search is converging: the **normalized Shannon entropy** over niche occupancy (are the ideas spreading across many niches or piling into a few?) and the **mean pairwise cosine** of the generation (are the raw candidates becoming alike?). The `collapsing` flag fires if the mean cosine exceeds 0.55 *or* if the normalized entropy falls below 0.50 with at least three occupied niches. A deliberate subtlety: the monitor runs on the **raw vectors before deduplication**, so a near-duplicate batch registers as a collapse instead of hiding behind the survivors. The monitor only *reports*; the *skill* reacts by raising diversity pressure —unused operators, veto on saturated niches, demand distance from the recent set. The machinery is never removed or worked around: it is the point of the tool.
+**Anti-collapse monitor.** Two complementary signals decide whether the search is converging: the **normalized Shannon entropy** over niche occupancy (are the ideas spreading across many niches or piling into a few?) and the **mean pairwise cosine** of the generation (are the raw candidates becoming alike?). The similarity signal is **calibrated to the project**: a rolling window of recent generations' mean cosine forms a baseline, and the `collapsing` flag fires when a generation exceeds `baseline + margin` (0.15) or an absolute safety ceiling (0.80); before the window has at least two samples it falls back to a fixed absolute threshold (0.55). It also fires if the normalized entropy falls below 0.50 with at least three occupied niches. This keeps the monitor from misfiring when a different embedder or domain shifts the natural scale of cosine similarity. A deliberate subtlety: the monitor runs on the **raw vectors before deduplication**, so a near-duplicate batch registers as a collapse instead of hiding behind the survivors. The monitor only *reports*; the *skill* reacts by raising diversity pressure —unused operators, veto on saturated niches, demand distance from the recent set. The machinery is never removed or worked around: it is the point of the tool.
 
 ---
 
@@ -272,13 +272,15 @@ State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), 
 
 | Parameter | Value | Meaning |
 | :-- | --: | :-- |
-| `DEDUP_TAU` | 0.92 | near-duplicate cosine threshold |
+| `DEDUP_TAU` | 0.92 / 0.94 | near-duplicate cosine threshold (per-embedder: hash / local) |
 | `KNN_K` | 5 | neighbors for geometric novelty |
 | `OPEN_NICHES` | 24 | frozen Voronoi cells for the open axis |
 | `OPEN_NICHE_FREEZE_FACTOR` | 4 | freeze the open-axis partition once `4 × OPEN_NICHES` mechanisms accumulate |
 | `MAX_DPP_POOL` | 200 | cap on the elite *pool* for the DPP |
 | `slate_size` | 6 | default slate size |
 | `candidates_per_generation` | 12 | candidates per generation |
-| monitor cosine threshold | 0.55 | trips collapse by similarity |
+| monitor cosine threshold | 0.55 | absolute similarity fallback (until the baseline window fills) |
+| monitor margin / ceiling | 0.15 / 0.80 | relative similarity flag: `baseline + margin`, capped by the absolute ceiling |
+| monitor window / min baseline | 5 / 2 | rolling-baseline size and samples needed before the relative rule applies |
 | monitor entropy threshold | 0.50 | trips collapse by concentration (≥3 niches) |
 | informativeness weights | 0.5 / 0.3 / 0.2 | similarity / uncertainty / novelty |

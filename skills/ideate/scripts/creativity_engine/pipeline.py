@@ -25,12 +25,15 @@ from . import (
     novelty,
 )
 from .config import AxesSpec, Candidate
-from .embed import dedupe
+from .embed import dedupe, default_dedup_tau
 from .session import Session
 
 # Tuning knobs (kept modest so first results stay quick — see plan §10 latency).
-DEDUP_TAU = 0.92
+# The near-duplicate cosine threshold is per-embedder (see ``embed.default_dedup_tau``).
 KNN_K = 5
+# Rolling window of recent generations' mean pairwise cosine, used to calibrate
+# the anti-collapse monitor to the project instead of a fixed constant.
+MONITOR_WINDOW = 5
 # Open-axis (mechanism) niching. The partition is data-adaptive: cold-start fixed
 # centroids until ``OPEN_NICHE_FREEZE_FACTOR * OPEN_NICHES`` mechanism embeddings
 # have accumulated, then a one-time k-means fit freezes the cells (see
@@ -353,14 +356,16 @@ def _select_slate(
 
 
 def _persist_cycle(
-    state: State,
+    state: "State",
     arc: "archive_mod.Archive",
     stored_emb: Dict[str, List[float]],
     cand_store: Dict[str, Any],
     vecs: np.ndarray,
     embedder,
+    mon: Dict[str, Any],
+    window: int = MONITOR_WINDOW,
 ) -> None:
-    """Write archive/embeddings/candidates and bump the cycle metadata."""
+    """Write archive/embeddings/candidates, bump cycle metadata, roll the window."""
     state.write_archive(arc.to_dict())
     state.write_embeddings(stored_emb)
     state.write_candidates(cand_store)
@@ -368,6 +373,11 @@ def _persist_cycle(
     meta["cycles"] = int(meta.get("cycles", 0)) + 1
     meta["embedder"] = embedder.name
     meta["embedding_dim"] = int(vecs.shape[1])
+    # Roll the monitor's calibration window with this generation's mean cosine.
+    if int(mon.get("n", 0)) >= 2:
+        cos_window = list(meta.get("cos_window", []))
+        cos_window.append(float(mon["mean_cosine"]))
+        meta["cos_window"] = cos_window[-window:]
     state.write_meta(meta)
 
 
@@ -403,8 +413,9 @@ def ingest(
     existing_ids = [eid for eid in arc.elite_ids() if eid in stored_emb]
     existing_vecs = _stack_embeddings(existing_ids, stored_emb, vecs.shape[1])
 
+    tau = default_dedup_tau(embedder.name)
     keep, _drop = dedupe(
-        vecs, tau=DEDUP_TAU, existing=existing_vecs if existing_vecs.shape[0] else None
+        vecs, tau=tau, existing=existing_vecs if existing_vecs.shape[0] else None
     )
     survivors = [cand_list[i] for i in keep]
     surv_vecs = vecs[keep] if keep else np.zeros((0, vecs.shape[1]), dtype=np.float32)
@@ -435,7 +446,10 @@ def ingest(
 
     # Monitor the RAW generation (pre-dedup) so a near-duplicate batch still
     # registers as collapsing — dedup would otherwise hide it behind survivors.
-    mon = monitor.evaluate(vecs, arc.niche_counts())
+    # The baseline is the rolling window of prior generations' mean cosine, so the
+    # similarity flag is calibrated to this project rather than a fixed constant.
+    baseline = list(state.read_meta().get("cos_window", []))
+    mon = monitor.evaluate(vecs, arc.niche_counts(), baseline=baseline)
 
     # Namespace preference memory by the session domain so ingest is consistent
     # with remember/recall/parents (all share Session's snapshot resolution).
@@ -443,7 +457,7 @@ def ingest(
     comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
-    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder)
+    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder, mon)
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,

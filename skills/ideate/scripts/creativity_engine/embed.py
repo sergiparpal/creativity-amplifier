@@ -28,6 +28,23 @@ DEFAULT_PROVIDER = "local"
 DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
 HASH_DIM = 512
 
+# Per-embedder near-duplicate cosine thresholds. Cosine scale is family-specific:
+# "the same idea, reworded" sits at different similarities under a char-n-gram
+# hashing vectorizer vs. a sentence model, so one global tau misfires when the
+# embedder changes. Keyed by ``Embedder.name``; unknown families fall back to the
+# default.
+DEFAULT_DEDUP_TAU = 0.92
+DEDUP_TAU_BY_EMBEDDER = {
+    "hash": 0.92,   # char-n-gram cosines: near-dupes cluster ~0.92+
+    "local": 0.94,  # sentence-transformer cosines run higher; raise the bar
+    "api": 0.92,    # unknown backend: conservative default
+}
+
+
+def default_dedup_tau(embedder_name: str) -> float:
+    """Near-duplicate cosine threshold calibrated to the embedder family."""
+    return DEDUP_TAU_BY_EMBEDDER.get(embedder_name, DEFAULT_DEDUP_TAU)
+
 
 def l2_normalize(mat: np.ndarray) -> np.ndarray:
     mat = np.asarray(mat, dtype=np.float32)

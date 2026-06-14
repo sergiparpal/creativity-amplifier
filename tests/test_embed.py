@@ -8,8 +8,10 @@ import pytest
 
 from creativity_engine import embed
 from creativity_engine.embed import (
+    DEFAULT_DEDUP_TAU,
     HashingEmbedder,
     dedupe,
+    default_dedup_tau,
     get_embedder,
     l2_normalize,
     reset_cache,
@@ -114,3 +116,12 @@ def test_env_var_selects_provider(monkeypatch):
     monkeypatch.setenv(embed.ENV_VAR, "hash")
     assert get_embedder().name == "hash"
     reset_cache()
+
+
+def test_dedup_tau_is_per_embedder():
+    # Each family gets its own near-duplicate threshold; the scales differ.
+    assert default_dedup_tau("hash") == 0.92
+    assert default_dedup_tau("local") == 0.94
+    assert default_dedup_tau("local") != default_dedup_tau("hash")
+    # unknown families fall back to the global default
+    assert default_dedup_tau("mystery-provider") == DEFAULT_DEDUP_TAU

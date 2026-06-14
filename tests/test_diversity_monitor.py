@@ -114,3 +114,44 @@ def test_entropy_helpers():
     assert monitor.shannon_entropy([1, 1, 1, 1]) > monitor.shannon_entropy([10, 1])
     assert abs(monitor.normalized_entropy([5, 5, 5, 5]) - 1.0) < 1e-9
     assert monitor.normalized_entropy([7]) == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Calibrated (relative) similarity flag
+# --------------------------------------------------------------------------- #
+def _pair(cos: float) -> np.ndarray:
+    """Two unit vectors whose only pairwise cosine is exactly ``cos``."""
+    return np.array([[1.0, 0.0], [cos, np.sqrt(1.0 - cos * cos)]], dtype=np.float64)
+
+
+def test_relative_flag_fires_below_absolute_threshold():
+    # mean cosine 0.45 is BELOW the old absolute 0.55, so without a baseline the
+    # monitor stays quiet...
+    vecs = _pair(0.45)
+    quiet = monitor.evaluate(vecs, niche_counts=[5, 5, 5])
+    assert quiet["collapsing"] is False
+    assert quiet["mean_cosine"] < 0.55
+    # ...but relative to a diverse rolling baseline (~0.20) it is clearly samey.
+    flagged = monitor.evaluate(vecs, niche_counts=[5, 5, 5], baseline=[0.2, 0.2, 0.2])
+    assert flagged["collapsing"] is True
+    assert flagged["mean_cosine"] < 0.55  # the absolute rule alone would miss it
+    assert any("baseline" in r for r in flagged["reasons"])
+
+
+def test_absolute_until_enough_baseline_samples():
+    vecs = _pair(0.45)
+    # one sample is below DEFAULT_MIN_BASELINE -> fall back to the absolute rule
+    res = monitor.evaluate(vecs, niche_counts=[5, 5, 5], baseline=[0.2])
+    assert res["collapsing"] is False
+    assert res["baseline_n"] == 1
+
+
+def test_absolute_safety_ceiling_catches_high_baseline():
+    # An already-elevated baseline would push baseline+margin to 0.85, but the
+    # absolute ceiling (0.80) still catches a genuinely collapsed generation.
+    over = monitor.evaluate(_pair(0.82), niche_counts=[5, 5, 5], baseline=[0.7, 0.7])
+    assert over["collapsing"] is True
+    assert over["cos_limit"] == 0.80
+    # just under the ceiling and under baseline+margin -> not flagged
+    under = monitor.evaluate(_pair(0.78), niche_counts=[5, 5, 5], baseline=[0.7, 0.7])
+    assert under["collapsing"] is False
