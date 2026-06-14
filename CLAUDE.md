@@ -143,7 +143,8 @@ about a domain is baked into the plugin or engine.
 `~/.creativity-amplifier/<project>/` (override the base with `CREATIVITY_AMPLIFIER_HOME`). Writes
 are atomic (temp file + `os.replace`). Per-project files are `meta.json` (project/session
 settings), `axes.json` (the resolved axes geometry — kept separate from settings so the engine's
-`AxesSpec` stays pure), `archive.json`, `candidates.json`, and `embeddings.json`. Preference memory
+`AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, and `open_nicher.json`
+(the frozen CVT centroids, written once the open-axis partition freezes — see Niching). Preference memory
 (`comparisons.jsonl`, `pins.json`) lives in a per-domain sub-directory, **namespaced per domain**
 so switching domains keeps preferences separate.
 

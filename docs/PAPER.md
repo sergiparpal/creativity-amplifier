@@ -61,7 +61,7 @@ flowchart TD
     B --> C[3. Prefilter for validity<br/>LLM agent · skeptical rubric]
     C --> D{{4. INGEST · engine}}
     D --> D1[embed · lineage distinct from the agent]
-    D1 --> D2[dedup cosine &gt; 0.92]
+    D1 --> D2[dedup cosine &gt; per-embedder τ]
     D2 --> D3[MAP-Elites niching over the axes]
     D3 --> D4[k-NN novelty]
     D4 --> D5[one elite per niche]
@@ -86,7 +86,7 @@ The heart of the system is the `ingest` command, which runs a chain of seven sta
 
 **Embedding with a distinct lineage.** The survivors of the prefilter are embedded with a model deliberately from **another lineage** than the agent: `BAAI/bge-small-en-v1.5` on CPU by default. The choice is intentional: "what is novel" should not be judged by the same lineage that generated the ideas. A deterministic hash embedder (no downloads) serves the tests and the offline *self-test*; an API embedder is left as a planned connector.
 
-**Deduplication.** Greedy near-duplicate removal: a row is dropped if its cosine similarity to any already-kept row (or to the archive's existing elites) exceeds τ = 0.92. This avoids wasting niches on trivial rephrasings without touching real variety.
+**Deduplication.** Greedy near-duplicate removal: a row is dropped if its cosine similarity to any already-kept row (or to the archive's existing elites) exceeds a **per-embedder threshold** τ — 0.92 for the hash fixture, 0.94 for the semantic `bge` model, whose sentence-transformer cosines run higher and so demand a higher bar. This avoids wasting niches on trivial rephrasings without touching real variety.
 
 **MAP-Elites niching.** Each candidate is placed into a **niche**, a discrete cell of descriptor space formed by combining one *bucket* per axis:
 
@@ -286,3 +286,5 @@ State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), 
 | monitor window / min baseline | 5 / 2 | rolling-baseline size and samples needed before the relative rule applies |
 | monitor entropy threshold | 0.50 | trips collapse by concentration (≥3 niches) |
 | informativeness weights | 0.5 / 0.3 / 0.2 | similarity / uncertainty / novelty |
+
+These are **defaults, not baked-in constants**. Every engine knob above lives in a single `EngineConfig`, and a domain config may override any of them through an optional `engine:` block, so thresholds can be retuned per domain without touching code (the dedup τ defaults to `null`, meaning "use the per-embedder value"). This extends the system's domain-agnosticism past the descriptor axes to the tuning itself: nothing about a domain — not even its diversity thresholds — is hard-coded in the engine.
