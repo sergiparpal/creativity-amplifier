@@ -1,0 +1,65 @@
+---
+name: ideate
+description: >
+  Generate a diverse, non-cliché slate of ideas/concepts from a brief in ANY
+  domain, using a blind-variation + diverse-archive loop with the user selecting
+  in chat. Use when the user asks to brainstorm, ideate, explore an idea space,
+  find fresh/original angles, generate many distinct options, or escape clichéd
+  or samey concepts — regardless of subject (marketing, product, research,
+  naming, design, fiction, strategy, etc.). The deterministic diversity engine
+  (embeddings, MAP-Elites, novelty, DPP, anti-collapse monitor) runs locally; you
+  do the generating and judging.
+allowed-tools: Bash, Read, Write
+---
+
+# Creativity Amplifier — ideate
+
+Brief: $ARGUMENTS
+
+You amplify creativity by pairing **your** generation + judgment with a local
+**diversity engine** that owns the anti-convergence math. Diversity is decoupled
+from quality: geometry (the engine) decides what is *new*; you only filter what
+is *valid/on-brief* and rank *within* a niche. Never let the judge pick the final
+slate. The user is the real selector.
+
+Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
+
+1. **Ensure the engine is ready.** If `${CLAUDE_SKILL_DIR}/.venv` is missing, run
+   `bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh` (one-time, installs deps).
+2. **Set** `ENGINE = ${CLAUDE_SKILL_DIR}/.venv/bin/python -m creativity_engine`
+   and choose a short `PROJECT` id for this session.
+3. **Resolve axes for this session** (diversity is only meaningful relative to a
+   set of descriptor axes). Cascade:
+   - if the user named a domain that has a config in
+     `${CLAUDE_SKILL_DIR}/config/domains/examples/`, load it; else
+   - **infer** 4–6 descriptor axes from the brief using
+     `${CLAUDE_SKILL_DIR}/references/axis_inference.md` (mark exactly one `open`
+     axis as the primary novelty carrier) and **confirm them with ONE short
+     question** the user can accept or tweak; else
+   - load `${CLAUDE_SKILL_DIR}/config/domains/generic.yaml`.
+   Write the resolved axes to a temp `axes.json`, then run
+   `ENGINE init-project --project PROJECT --axes axes.json` and
+   `ENGINE recall --project PROJECT`.
+4. **Generate** candidates yourself using
+   `${CLAUDE_SKILL_DIR}/references/operators.md`. Apply several different
+   operators; for each candidate report its `descriptor` on the resolved axes and
+   its `genealogy` (parent ids + operator id). Push for variety — each new
+   approach must differ from the ones already shown.
+5. **Prefilter** yourself using `${CLAUDE_SKILL_DIR}/references/judge_rubric.md`
+   to drop only invalid / off-brief candidates. NEVER judge novelty here. You may
+   attach a within-niche `fitness` (0–1); you may NOT use it to cut variety.
+6. **Ingest.** Write survivors to a temp `candidates.json` and run
+   `ENGINE ingest --project PROJECT --candidates candidates.json --axes axes.json`.
+7. **Present** the returned `slate` (show each idea with its niche `coords` so the
+   user can judge distinctness). Ask only the returned `ask_pairs` as short
+   A-vs-B questions. Let the user pin "stepping stones".
+8. **Record & continue.** For each answer/pin run `ENGINE remember`; then
+   `ENGINE parents` to get diverse parents and loop from step 4, or stop on the
+   user's command.
+9. **React to collapse.** If `monitor.collapsing` is true, raise diversity
+   directives next round (new operators, forbid the crowded niches, demand
+   distance from recent ideas) — never remove or bypass the monitor.
+
+Read `${CLAUDE_SKILL_DIR}/references/loop.md` for exact JSON shapes, engine
+contracts, and steering tactics. Never hard-code a domain — always use the axes
+resolved in step 3.

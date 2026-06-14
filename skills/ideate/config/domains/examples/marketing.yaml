@@ -1,0 +1,14 @@
+# Example domain template (one of several). NOT a default — the skill is
+# domain-agnostic and resolves axes per session. Loaded only if the user names
+# this domain. Copy/edit to add your own.
+domain: marketing
+unit_of_generation: concept
+axes:
+  - {name: audience, type: categorical}     # who the concept targets
+  - {name: register, type: categorical}     # tone: deadpan / earnest / absurd / luxe ...
+  - {name: format, type: categorical}       # film / OOH / stunt / UGC / product ...
+  - {name: edginess, type: continuous, range: [0.0, 1.0]}  # safe <-> provocative
+  - {name: mechanism, type: open, primary_novelty: true}   # the core creative device
+judge_rubric: references/judge_rubric.md
+slate_size: 6
+candidates_per_generation: 12

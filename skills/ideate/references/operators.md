@@ -1,0 +1,99 @@
+# Variation operators (domain-agnostic)
+
+These are **blind-variation** operators: ways to generate candidates that differ
+structurally, so the diversity engine has real spread to work with. None assumes a
+subject — they take the brief and current parents/stepping-stones and produce a
+new idea plus its descriptor and genealogy.
+
+**How to use them**
+- Each generation, apply **several different operators**, not one. Mixing
+  operators is what creates spread; reusing one collapses it.
+- For every candidate, record `genealogy.operator_id` (the operator's key below)
+  and `genealogy.parent_ids` (the ideas it varied, if any).
+- Aim each operator at a *different* region: vary the `open`/primary-novelty axis
+  (the core "how") aggressively; vary categorical/continuous axes to cover the
+  grid.
+- Prefer concrete, single-sentence ideas over vague categories.
+
+When the monitor reports collapse, switch to operators you have not used this
+session, especially `analogy`, `biomimicry`, `random_stimulus`, and `inversion`.
+
+---
+
+## Core operators
+
+### `mutation`
+Take one parent and change a single dimension hard: swap the audience, flip the
+register, push a continuous axis to an extreme, or replace the mechanism while
+keeping the surface. Smallest-step explorer; good for filling nearby niches.
+
+### `combination`
+Fuse two unrelated parents (or the brief + an unrelated concept) into one idea
+that needs both to make sense. Forces a mechanism neither parent had.
+
+### `analogy`
+Map the brief's structure onto a distant source domain ("what is the X of Y?")
+and import that domain's mechanism. The strongest novelty driver — reach for far
+sources (other industries, nature, games, rituals, physics).
+
+### `transformation`
+Apply a transform to an existing idea: reverse it, exaggerate it 10×, shrink it to
+a single gesture, make it continuous/ongoing, make it collaborative, make it
+self-destruct. Changes the *form* axis while preserving intent.
+
+### `reframing`
+Restate the underlying goal/problem, then solve the reframed version. Changing the
+question ("we assumed it's about A — what if it's about B?") opens niches no
+amount of mutation reaches.
+
+### `inversion`
+Do the opposite of the obvious solution, or solve the anti-goal, then invert the
+result back. Surfaces ideas that cliché-following never produces.
+
+### `constraint`
+Impose an arbitrary, severe constraint (no budget, one word, must work offline,
+must be free, must take 5 seconds) and design to it. Constraints force fresh
+mechanisms.
+
+### `random_stimulus`
+Draw a random unrelated noun/image/verb and force a connection to the brief. A
+deliberate jolt out of the current cluster; use when ideas feel samey.
+
+### `biomimicry`
+Borrow a mechanism from a living system (swarming, symbiosis, camouflage,
+metamorphosis, mycelial networks) and adapt it. A reliable source of mechanisms
+for the primary-novelty axis.
+
+---
+
+## Structured idea generators (use to systematically cover the grid)
+
+### `scamper`
+Run the brief through SCAMPER prompts — **S**ubstitute, **C**ombine, **A**dapt,
+**M**odify/magnify, **P**ut to other use, **E**liminate, **R**everse. Each prompt
+is effectively a different operator; tag the candidate with the sub-letter in the
+text if useful.
+
+### `morphological`
+List the key parameters of the solution (often your categorical axes), enumerate
+several options per parameter, then assemble unusual *combinations* of options.
+Directly targets unoccupied MAP-Elites niches.
+
+### `triz`
+When the brief contains a trade-off ("we want more A but that costs B"), apply a
+TRIZ inventive principle (segmentation, asymmetry, "the other way round",
+nesting, prior counteraction, self-service) to dissolve the contradiction rather
+than compromise it.
+
+---
+
+## Descriptor discipline
+
+For every candidate, fill the resolved axes honestly:
+- **categorical** → pick the value that truly describes the idea (don't default
+  everything to the same value — that collapses niches).
+- **continuous** → a number in range that reflects the idea (use the extremes,
+  not just the middle).
+- **open / primary-novelty** → a few words naming the *core mechanism* — the
+  thing that makes this idea work. This is what the engine niches geometrically,
+  so make distinct ideas name distinct mechanisms.

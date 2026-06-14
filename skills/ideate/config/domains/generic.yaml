@@ -1,0 +1,14 @@
+# Neutral fallback axes (resolution path 1c).
+# Used when the user names no shipped domain and axis inference is skipped or
+# fails. Domain-agnostic by construction: these axes describe *any* idea space.
+domain: generic
+unit_of_generation: idea
+axes:
+  - {name: angle, type: categorical}        # the lens/perspective taken
+  - {name: scope, type: categorical}        # how broad or narrow the idea is
+  - {name: form, type: categorical}         # the shape/format of the output
+  - {name: boldness, type: continuous, range: [0.0, 1.0]}  # safe <-> daring
+  - {name: mechanism, type: open, primary_novelty: true}   # the core "how"; novelty carrier
+judge_rubric: references/judge_rubric.md
+slate_size: 6
+candidates_per_generation: 12
