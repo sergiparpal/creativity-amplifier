@@ -164,7 +164,7 @@ That DPP beats first-N over the *same set of candidates* is the result that matt
 
 The collapse is detected and reversed: the mean cosine drops from 0.83 to 0.39 and occupancy goes from 1 to 13 niches.
 
-**Suite and size.** The suite runs **77 tests** (unit, property, and end-to-end) green, hermetically (hash embedder and isolated state, no downloads). The engine is ~2,150 lines of Python; the tests, ~900. The value gate and the collapse reversal both pass.
+**Suite and size.** The suite runs **81 tests** (unit, property, and end-to-end) green, hermetically (hash embedder and isolated state, no downloads). The engine is ~2,440 lines of Python; the tests, ~930. The value gate and the collapse reversal both pass.
 
 ---
 
