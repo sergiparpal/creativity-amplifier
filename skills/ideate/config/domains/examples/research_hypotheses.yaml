@@ -12,3 +12,10 @@ axes:
 judge_rubric: references/judge_rubric.md
 slate_size: 6
 candidates_per_generation: 12
+# Optional per-domain engine overrides. Every key defaults to the engine's built-in
+# value (so omitting `engine:` reproduces default behavior); see _schema.md for the
+# full list. Here: hypotheses span more distinct mechanisms, so widen the open-axis
+# partition and lean a little harder on the (still-bounded) judge fitness.
+engine:
+  open_niches: 32
+  quality_weight: 0.4

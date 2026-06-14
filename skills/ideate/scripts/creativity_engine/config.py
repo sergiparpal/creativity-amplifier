@@ -158,6 +158,125 @@ class SessionSettings:
 
 
 @dataclass
+class EngineConfig:
+    """Tuning knobs the engine reads, with per-domain overrides.
+
+    These used to be scattered module constants (``DEDUP_TAU``, ``KNN_K``,
+    ``OPEN_NICHES`` …), tuned for one embedder. They live here so a domain config
+    can override any of them via an optional ``engine:`` block while the defaults
+    reproduce the original behavior exactly. Like :class:`SessionSettings`, this
+    is *not* engine geometry — it rides alongside the axes in the same file and is
+    parsed out separately, so :class:`AxesSpec` stays pure.
+
+    ``dedup_tau`` defaults to ``None``, meaning "use the per-embedder default"
+    (see ``embed.default_dedup_tau``); set it to pin a fixed threshold.
+    """
+
+    # niching
+    open_niches: int = 24
+    open_niche_freeze_factor: int = 4
+    # novelty / dedup
+    knn_k: int = 5
+    dedup_tau: Optional[float] = None
+    novelty_ref_cap: int = 500
+    # DPP slate
+    max_dpp_pool: int = 200
+    quality_weight: float = 0.3
+    # anti-collapse monitor
+    monitor_cos_threshold: float = 0.55
+    monitor_entropy_threshold: float = 0.50
+    monitor_margin: float = 0.15
+    monitor_cos_ceiling: float = 0.80
+    monitor_window: int = 5
+    monitor_min_baseline: int = 2
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "open_niches": self.open_niches,
+            "open_niche_freeze_factor": self.open_niche_freeze_factor,
+            "knn_k": self.knn_k,
+            "dedup_tau": self.dedup_tau,
+            "novelty_ref_cap": self.novelty_ref_cap,
+            "max_dpp_pool": self.max_dpp_pool,
+            "quality_weight": self.quality_weight,
+            "monitor_cos_threshold": self.monitor_cos_threshold,
+            "monitor_entropy_threshold": self.monitor_entropy_threshold,
+            "monitor_margin": self.monitor_margin,
+            "monitor_cos_ceiling": self.monitor_cos_ceiling,
+            "monitor_window": self.monitor_window,
+            "monitor_min_baseline": self.monitor_min_baseline,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "EngineConfig":
+        """Build from a full config dict, reading its optional ``engine:`` block."""
+        if not isinstance(d, dict):
+            raise ConfigError(f"config must be an object, got {type(d).__name__}")
+        eng = d.get("engine", {})
+        if eng is None:  # `engine:` present but empty
+            eng = {}
+        if not isinstance(eng, dict):
+            raise ConfigError(f"'engine' must be an object, got {type(eng).__name__}")
+        base = cls()
+
+        def pos_int(key: str, default: int) -> int:
+            v = eng.get(key, default)
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise ConfigError(f"engine.{key} must be an integer")
+            if v < 1:
+                raise ConfigError(f"engine.{key} must be >= 1")
+            return v
+
+        def unit_float(key: str, default: float, lo: float = 0.0,
+                       hi: float = 1.0) -> float:
+            v = eng.get(key, default)
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                raise ConfigError(f"engine.{key} must be a number")
+            if not (lo <= v <= hi):
+                raise ConfigError(f"engine.{key} must be in [{lo}, {hi}]")
+            return v
+
+        dedup_tau = eng.get("dedup_tau", None)
+        if dedup_tau is not None:
+            try:
+                dedup_tau = float(dedup_tau)
+            except (TypeError, ValueError):
+                raise ConfigError("engine.dedup_tau must be a number or null")
+            if not (0.0 < dedup_tau <= 1.0):
+                raise ConfigError("engine.dedup_tau must be in (0, 1]")
+
+        return cls(
+            open_niches=pos_int("open_niches", base.open_niches),
+            open_niche_freeze_factor=pos_int(
+                "open_niche_freeze_factor", base.open_niche_freeze_factor
+            ),
+            knn_k=pos_int("knn_k", base.knn_k),
+            dedup_tau=dedup_tau,
+            novelty_ref_cap=pos_int("novelty_ref_cap", base.novelty_ref_cap),
+            max_dpp_pool=pos_int("max_dpp_pool", base.max_dpp_pool),
+            quality_weight=unit_float("quality_weight", base.quality_weight),
+            monitor_cos_threshold=unit_float(
+                "monitor_cos_threshold", base.monitor_cos_threshold
+            ),
+            monitor_entropy_threshold=unit_float(
+                "monitor_entropy_threshold", base.monitor_entropy_threshold
+            ),
+            monitor_margin=unit_float("monitor_margin", base.monitor_margin),
+            monitor_cos_ceiling=unit_float(
+                "monitor_cos_ceiling", base.monitor_cos_ceiling
+            ),
+            monitor_window=pos_int("monitor_window", base.monitor_window),
+            monitor_min_baseline=pos_int(
+                "monitor_min_baseline", base.monitor_min_baseline
+            ),
+        )
+
+
+@dataclass
 class Candidate:
     """An idea produced by the agent and consumed by ``ingest``."""
 
@@ -354,6 +473,13 @@ def load_session_settings(
     """Load the agent-/session-level :class:`SessionSettings` from the same
     dict/file the axes come from (missing keys fall back to defaults)."""
     return SessionSettings.from_dict(_load_config_dict(source))
+
+
+def load_engine_config(source: Union[str, Path, Dict[str, Any]]) -> EngineConfig:
+    """Load the engine tuning :class:`EngineConfig` (its optional ``engine:``
+    block) from the same dict/file the axes come from; defaults reproduce the
+    original behavior."""
+    return EngineConfig.from_dict(_load_config_dict(source))
 
 
 def generic_axes_path() -> Path:

@@ -86,8 +86,14 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 
 **Module layering** (`skills/ideate/scripts/creativity_engine/`), lowest to highest:
 
-- `config.py` — foundation. Dataclasses (`Axis`, `AxesSpec`, `Candidate`, `Niche`) and axes
-  loading/validation. The engine **never assumes a domain**; every command receives resolved axes.
+- `config.py` — foundation. Dataclasses (`Axis`, `AxesSpec`, `Candidate`, `Niche`,
+  `SessionSettings`, `EngineConfig`) and axes loading/validation. The engine **never assumes a
+  domain**; every command receives resolved axes. **Tuning knobs live in `EngineConfig`** (dedup τ,
+  KNN k, open-niche count + freeze factor, DPP pool, novelty-ref cap, quality weight, monitor
+  thresholds/margins/window), overridable per domain via an optional `engine:` block; defaults
+  reproduce the original behavior and `ingest` resolves them with `load_engine_config`. The
+  pipeline/monitor module constants remain only as fallback defaults for direct callers and the
+  self-test (kept in sync with `EngineConfig` by `test_engine_config`).
 - `embed.py`, `novelty.py`, `diversity.py`, `monitor.py`, `archive.py` — the math (see below).
 - `state.py`, `memory.py` — file-based persistence and preference memory.
 - `session.py` — per-invocation context (`Session`): bundles the `State` handle, the resolved

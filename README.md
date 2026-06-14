@@ -112,7 +112,9 @@ candidates_per_generation: 12
 
 Then a user who says "name ideas (naming)" gets these axes; everyone else gets
 inferred-or-generic axes. See `references/axis_inference.md` for how inference
-works.
+works. A template may also carry an optional `engine:` block to override tuning
+knobs (open-niche count, dedup τ, quality weight, monitor thresholds, …) per
+domain — defaults reproduce the standard behavior; see `_schema.md` for the keys.
 
 ## The engine CLI (for the curious / for tests)
 

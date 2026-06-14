@@ -31,12 +31,13 @@ from .config import AxesSpec, Candidate
 from .embed import dedupe, default_dedup_tau
 from .session import Session
 
-# Tuning knobs (kept modest so first results stay quick — see plan §10 latency).
+# Default tuning knobs. These are the **fallback defaults** for direct/library
+# callers and the self-test's placement helper; the real ``ingest`` path resolves
+# every knob from :class:`config.EngineConfig` (per-domain overridable). The values
+# here MUST mirror ``EngineConfig``'s defaults — ``test_engine_config`` guards that.
+#
 # The near-duplicate cosine threshold is per-embedder (see ``embed.default_dedup_tau``).
 KNN_K = 5
-# Rolling window of recent generations' mean pairwise cosine, used to calibrate
-# the anti-collapse monitor to the project instead of a fixed constant.
-MONITOR_WINDOW = 5
 # Open-axis (mechanism) niching. The partition is data-adaptive: cold-start fixed
 # centroids until ``OPEN_NICHE_FREEZE_FACTOR * OPEN_NICHES`` mechanism embeddings
 # have accumulated, then a one-time k-means fit freezes the cells (see
@@ -71,6 +72,7 @@ def init_project(
     """
     spec = config.load_axes(axes_source)
     settings = config.load_session_settings(axes_source)
+    econfig = config.load_engine_config(axes_source)
     sess = Session(project, home=home, seed=seed).ensure()
     sess.adopt_spec(spec)
     meta = sess.state.read_meta()
@@ -81,6 +83,7 @@ def init_project(
             "unit_of_generation": spec.unit_of_generation,
             "candidates_per_generation": settings.candidates_per_generation,
             "judge_rubric": settings.judge_rubric,
+            "engine": econfig.to_dict(),
             "seed": int(seed),
             "version": __version__,
         }
@@ -362,6 +365,8 @@ def _select_slate(
     cand_store: Dict[str, Any],
     spec: AxesSpec,
     seed: int,
+    max_dpp_pool: int = MAX_DPP_POOL,
+    quality_weight: float = QUALITY_WEIGHT,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """DPP diverse slate over the current niche elites. Returns ``(slate, ids)``."""
     elites: List[Tuple[str, float, str]] = [
@@ -370,11 +375,11 @@ def _select_slate(
         if niche.elite_id and niche.elite_id in stored_emb
     ]
     # cap the pool by novelty for latency
-    if len(elites) > MAX_DPP_POOL:
+    if len(elites) > max_dpp_pool:
         elites.sort(
             key=lambda e: cand_store.get(e[0], {}).get("novelty", 0.0), reverse=True
         )
-        elites = elites[:MAX_DPP_POOL]
+        elites = elites[:max_dpp_pool]
     if not elites:
         return [], []
 
@@ -383,7 +388,7 @@ def _select_slate(
     quality = np.asarray([e[1] for e in elites], dtype=np.float64)
     sel = diversity.select_diverse(
         elite_vecs, k=spec.slate_size, quality=quality, seed=seed,
-        quality_weight=QUALITY_WEIGHT,
+        quality_weight=quality_weight,
     )
     slate_ids = [elite_ids[i] for i in sel]
     slate = [_slate_item(cand_store[i]) for i in slate_ids]
@@ -398,7 +403,7 @@ def _persist_cycle(
     vecs: np.ndarray,
     embedder,
     mon: Dict[str, Any],
-    window: int = MONITOR_WINDOW,
+    econfig: "config.EngineConfig",
 ) -> None:
     """Write archive/embeddings/candidates, bump cycle metadata, roll the window."""
     state.write_archive(arc.to_dict())
@@ -408,11 +413,12 @@ def _persist_cycle(
     meta["cycles"] = int(meta.get("cycles", 0)) + 1
     meta["embedder"] = embedder.name
     meta["embedding_dim"] = int(vecs.shape[1])
+    meta["engine"] = econfig.to_dict()  # keep the resolved knobs visible/auditable
     # Roll the monitor's calibration window with this generation's mean cosine.
     if int(mon.get("n", 0)) >= 2:
         cos_window = list(meta.get("cos_window", []))
         cos_window.append(float(mon["mean_cosine"]))
-        meta["cos_window"] = cos_window[-window:]
+        meta["cos_window"] = cos_window[-econfig.monitor_window:]
     state.write_meta(meta)
 
 
@@ -425,6 +431,7 @@ def ingest(
 ) -> Dict[str, Any]:
     """Embed → dedup → place → novelty → archive → DPP → monitor for one cycle."""
     spec = config.load_axes(axes_source)
+    econfig = config.load_engine_config(axes_source)
     sess = Session(project, home=home, seed=seed).ensure()
     # The axes passed in are authoritative for this cycle; snapshot them only on
     # a fresh project so an existing project keeps its original resolved axes.
@@ -445,11 +452,13 @@ def ingest(
     _guard_embedding_dim(stored_emb, vecs, embedder, project)
 
     # Existing archive elites seed both dedup and the novelty reference, capped to
-    # the most-novel NOVELTY_REF_CAP so the per-cycle cost stays bounded.
-    existing_ids = _novelty_reference_ids(arc, stored_emb)
+    # the most-novel novelty_ref_cap so the per-cycle cost stays bounded.
+    existing_ids = _novelty_reference_ids(arc, stored_emb, cap=econfig.novelty_ref_cap)
     existing_vecs = _stack_embeddings(existing_ids, stored_emb, vecs.shape[1])
 
-    tau = default_dedup_tau(embedder.name)
+    tau = econfig.dedup_tau if econfig.dedup_tau is not None else default_dedup_tau(
+        embedder.name
+    )
     keep, _drop = dedupe(
         vecs, tau=tau, existing=existing_vecs if existing_vecs.shape[0] else None
     )
@@ -463,9 +472,9 @@ def ingest(
     frozen_nicher = _frozen_open_nicher(on_state, open_axis)
     open_axis, cells, open_vecs = assign_open_cells(
         spec, [c.descriptor for c in survivors], [c.text for c in survivors],
-        embedder, seed, nicher=frozen_nicher, open_niches=OPEN_NICHES,
+        embedder, seed, nicher=frozen_nicher, open_niches=econfig.open_niches,
     )
-    novelties = _survivor_novelty(surv_vecs, existing_vecs, KNN_K)
+    novelties = _survivor_novelty(surv_vecs, existing_vecs, econfig.knn_k)
     _place_survivors(
         survivors, surv_vecs, cells, novelties, open_axis,
         spec, arc, cand_store, stored_emb,
@@ -475,17 +484,28 @@ def ingest(
     # partition once and re-key the archive onto the frozen cells.
     _accumulate_and_maybe_freeze(
         state, on_state, open_axis, open_vecs, arc, cand_store, spec,
-        embedder, seed,
+        embedder, seed, open_niches=econfig.open_niches,
+        freeze_factor=econfig.open_niche_freeze_factor,
     )
 
-    slate, slate_ids = _select_slate(arc, stored_emb, cand_store, spec, seed)
+    slate, slate_ids = _select_slate(
+        arc, stored_emb, cand_store, spec, seed,
+        max_dpp_pool=econfig.max_dpp_pool, quality_weight=econfig.quality_weight,
+    )
 
     # Monitor the RAW generation (pre-dedup) so a near-duplicate batch still
     # registers as collapsing — dedup would otherwise hide it behind survivors.
     # The baseline is the rolling window of prior generations' mean cosine, so the
     # similarity flag is calibrated to this project rather than a fixed constant.
     baseline = list(state.read_meta().get("cos_window", []))
-    mon = monitor.evaluate(vecs, arc.niche_counts(), baseline=baseline)
+    mon = monitor.evaluate(
+        vecs, arc.niche_counts(), baseline=baseline,
+        cos_threshold=econfig.monitor_cos_threshold,
+        entropy_threshold=econfig.monitor_entropy_threshold,
+        margin=econfig.monitor_margin,
+        cos_ceiling=econfig.monitor_cos_ceiling,
+        min_baseline=econfig.monitor_min_baseline,
+    )
 
     # Namespace preference memory by the session domain so ingest is consistent
     # with remember/recall/parents (all share Session's snapshot resolution).
@@ -493,7 +513,7 @@ def ingest(
     comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
-    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder, mon)
+    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig)
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,
