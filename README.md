@@ -146,9 +146,14 @@ skills/ideate/.venv/bin/python -m pytest -q
 
 The self-test enforces a **value gate** — the engine's diverse slate must beat a
 single-shot baseline on mean pairwise distance, Vendi score, and niche entropy,
-and DPP must beat naive first-N selection on the same pool — plus an
-**induced-collapse reversal** (a samey generation trips the monitor; the next
-generation recovers once diversity pressure rises).
+and DPP must beat naive first-N selection on the same pool (**shuffled** so
+first-N isn't trivially the near-clones, and **averaged over several seeds**),
+with a **null check** that DPP doesn't regress below a random subset on an
+already-uniform pool — plus an **induced-collapse reversal** (a samey generation
+trips the monitor; the next generation recovers once diversity pressure rises).
+A `--live` run adds a semantic sanity check (a paraphrase beats an unrelated
+sentence under the real embedder), skipped cleanly when sentence-transformers
+isn't installed.
 
 ## Layout
 

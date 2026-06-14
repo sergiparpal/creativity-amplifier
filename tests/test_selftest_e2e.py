@@ -29,9 +29,25 @@ def test_value_gate_passes_with_margins(report):
     assert eng["mean_pairwise_distance"] > base["mean_pairwise_distance"] + 0.10
     assert eng["vendi"] > base["vendi"] + 0.5
     assert eng["niche_entropy"] > base["niche_entropy"]
-    # DPP selection beats naive first-N on the SAME pool (engine's own value)
-    assert vg["dpp_on_pool"]["mean_pairwise_distance"] > vg["first_n_on_pool"]["mean_pairwise_distance"]
+    # DPP selection beats naive first-N on the SAME (shuffled) pool, averaged over
+    # seeds — the de-rigged, non-tautological signal of the engine's own value.
+    assert (
+        vg["dpp_on_pool"]["mean_pairwise_distance_avg"]
+        > vg["first_n_on_pool"]["mean_pairwise_distance_avg"]
+    )
+    # null check: DPP doesn't regress below a random subset on a uniform pool
+    assert vg["null_check"]["passed"] is True
+    assert vg["null_check"]["dpp_mpd"] >= vg["null_check"]["random_mean_mpd"] - 0.02
     assert all(vg["checks"].values())
+
+
+def test_live_semantic_skips_cleanly_offline(report):
+    # On the hash (non-live) path the semantic check must skip without failing.
+    sem = report["live_semantic"]
+    assert sem["ran"] is False
+    assert sem["skipped"] is True
+    # a skipped semantic check never drags the overall result down
+    assert report["ok"] is True
 
 
 def test_collapse_reversal_passes(report):

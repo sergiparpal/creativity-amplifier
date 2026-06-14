@@ -4,10 +4,16 @@ No interactive input, no live model. It exercises the whole loop on a
 domain-neutral brief + generic axes and then proves two things:
 
 * **Value gate** — the engine's diverse slate beats a single-shot baseline on
-  mean pairwise distance, Vendi score, and niche entropy; and DPP selection beats
-  naive first-N on the *same* pool (isolating the engine's contribution).
+  mean pairwise distance, Vendi score, and niche entropy; DPP selection beats
+  naive first-N on the *same* pool, **shuffled** (so first-N isn't trivially the
+  near-clones) and **averaged over several seeds** (so the win isn't a fluke);
+  and a **null check** confirms DPP does not regress below a random subset on an
+  already-uniform pool.
 * **Induced-collapse reversal** — a samey generation trips the monitor, and once
   diversity pressure is raised the next generation recovers.
+* **Live semantic check** (``--live`` only) — a paraphrase is more similar than an
+  unrelated sentence under the real embedder; skipped cleanly when
+  sentence-transformers isn't installed.
 
 The stubbed LLM is a canned candidate generator; the stubbed human auto-picks the
 highest-novelty idea in each slate.
@@ -196,14 +202,95 @@ def _single_shot_metrics(spec, settings, embedder, seed):
     return _slate_diversity(vecs[: spec.slate_size], niches[: spec.slate_size])
 
 
-def _dpp_isolation_metrics(spec, settings, embedder, seed):
-    """DPP vs first-N on one shared pool — isolates the engine's selection step."""
-    cands = dpp_isolation_candidates(settings.candidates_per_generation, spec.slate_size)
-    vecs, niches = _place(cands, spec, embedder, seed)
+def _dpp_isolation_metrics(spec, settings, embedder, seed, n_seeds=3):
+    """DPP vs first-N over a SHUFFLED shared pool, averaged across seeds.
+
+    Shuffling (fixed per-seed) means first-N is a *random* slice of the pool, not
+    trivially the leading near-clones, so beating it is a real signal rather than
+    an artifact of pool order. We average the mean-pairwise-distance over several
+    seeds so a single lucky/unlucky draw doesn't decide the gate. The first seed's
+    full metrics are kept as the reported example.
+    """
+    dpp_mpds, firstn_mpds = [], []
+    dpp_example, firstn_example = None, None
+    for s in range(seed, seed + n_seeds):
+        cands = dpp_isolation_candidates(
+            settings.candidates_per_generation, spec.slate_size
+        )
+        vecs, niches = _place(cands, spec, embedder, s)
+        order = np.random.default_rng(s).permutation(len(cands))
+        vecs = vecs[order]
+        niches = [niches[i] for i in order]
+        sel = diversity.select_diverse(vecs, k=spec.slate_size, seed=s)
+        dpp = _slate_diversity(vecs[sel], [niches[i] for i in sel])
+        first_n = _slate_diversity(
+            vecs[: spec.slate_size], niches[: spec.slate_size]
+        )
+        dpp_mpds.append(dpp["mean_pairwise_distance"])
+        firstn_mpds.append(first_n["mean_pairwise_distance"])
+        if dpp_example is None:
+            dpp_example, firstn_example = dpp, first_n
+    dpp_example["mean_pairwise_distance_avg"] = round(float(np.mean(dpp_mpds)), 4)
+    firstn_example["mean_pairwise_distance_avg"] = round(float(np.mean(firstn_mpds)), 4)
+    return dpp_example, firstn_example
+
+
+def _null_check(spec, settings, embedder, seed, trials=50, eps=0.02):
+    """On a uniformly-diverse pool DPP must not regress below a random k-subset.
+
+    There is nothing for selection to "gain" when every item is already spread
+    out, so DPP's mean pairwise distance should be at least the random-subset mean
+    (minus a small epsilon). This guards against the value gate rewarding DPP for
+    a degenerate pool rather than for genuine selection skill.
+    """
+    cands = diverse_candidates(max(2 * spec.slate_size, 16), gen=9, prefix="null")
+    vecs, _ = _place(cands, spec, embedder, seed)
     sel = diversity.select_diverse(vecs, k=spec.slate_size, seed=seed)
-    dpp = _slate_diversity(vecs[sel], [niches[i] for i in sel])
-    first_n = _slate_diversity(vecs[: spec.slate_size], niches[: spec.slate_size])
-    return dpp, first_n
+    dpp_mpd = diversity.mean_pairwise_distance(vecs[sel])
+    rng = np.random.default_rng(seed)
+    rand = [
+        diversity.mean_pairwise_distance(
+            vecs[rng.choice(len(cands), size=spec.slate_size, replace=False)]
+        )
+        for _ in range(trials)
+    ]
+    rand_mean = float(np.mean(rand))
+    return {
+        "dpp_mpd": round(dpp_mpd, 4),
+        "random_mean_mpd": round(rand_mean, 4),
+        "passed": bool(dpp_mpd >= rand_mean - eps),
+    }
+
+
+def _live_semantic_check(live: bool) -> Dict[str, Any]:
+    """Under the real embedder, a paraphrase must beat an unrelated sentence.
+
+    Only runs on a ``--live`` invocation, and **skips cleanly** (without failing
+    the self-test) when sentence-transformers isn't installed.
+    """
+    if not live:
+        return {"ran": False, "skipped": True, "reason": "not a --live run"}
+    try:
+        import sentence_transformers  # noqa: F401
+    except Exception as exc:  # pragma: no cover - depends on the environment
+        return {
+            "ran": False,
+            "skipped": True,
+            "reason": f"sentence-transformers not installed ({exc})",
+        }
+    emb = embed.get_embedder("local")
+    a = emb.embed(["a quiet library for focused study"])[0]
+    para = emb.embed(["a calm reading room for concentrated work"])[0]
+    unrel = emb.embed(["an explosive monster-truck demolition derby"])[0]
+    sim_para = float(np.dot(a, para))
+    sim_unrel = float(np.dot(a, unrel))
+    return {
+        "ran": True,
+        "skipped": False,
+        "sim_paraphrase": round(sim_para, 4),
+        "sim_unrelated": round(sim_unrel, 4),
+        "passed": bool(sim_para > sim_unrel),
+    }
 
 
 def _collapse_reversal(spec, settings, axes, seed, home, project):
@@ -262,11 +349,14 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         spec, settings, embedder, seed
     )
 
+    null_check = _null_check(spec, settings, embedder, seed)
+
     value_gate = {
         "engine": engine_metrics,
         "single_shot": base_metrics,
         "dpp_on_pool": dpp_metrics,
         "first_n_on_pool": firstn_metrics,
+        "null_check": null_check,
         "checks": {
             "mpd_beats_single_shot": engine_metrics["mean_pairwise_distance"]
             > base_metrics["mean_pairwise_distance"] + MARGIN_MPD,
@@ -274,24 +364,31 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             > base_metrics["vendi"] + MARGIN_VENDI,
             "entropy_beats_single_shot": engine_metrics["niche_entropy"]
             > base_metrics["niche_entropy"],
-            "dpp_beats_first_n": dpp_metrics["mean_pairwise_distance"]
-            > firstn_metrics["mean_pairwise_distance"],
+            # averaged over shuffled seeds, so it isn't an artifact of pool order
+            "dpp_beats_first_n": dpp_metrics["mean_pairwise_distance_avg"]
+            > firstn_metrics["mean_pairwise_distance_avg"],
+            # DPP doesn't regress below random when there's nothing to gain
+            "null_no_regression": null_check["passed"],
         },
     }
     value_gate["passed"] = all(value_gate["checks"].values())
 
     reversal = _collapse_reversal(spec, settings, axes, seed, home, project)
+    semantic = _live_semantic_check(live)
 
     written = {
         name: Path(p).exists() for name, p in state.paths().items() if name != "root"
     }
     files_ok = all(written.values())
+    # A skipped semantic check doesn't fail the gate; a ran-and-failed one does.
+    semantic_ok = (not semantic.get("ran")) or bool(semantic.get("passed"))
 
-    ok = bool(value_gate["passed"] and reversal["passed"] and files_ok)
+    ok = bool(value_gate["passed"] and reversal["passed"] and files_ok and semantic_ok)
     return {
         "ok": ok,
         "value_gate": value_gate,
         "collapse_reversal": reversal,
+        "live_semantic": semantic,
         "state_files_written": written,
         "cycles": SELFTEST_CYCLES,
         "embedder": "local" if live else "hash",
