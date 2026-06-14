@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
@@ -100,10 +101,9 @@ def main(argv=None) -> int:
     except config.ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    except NotImplementedError as exc:
-        print(f"error: command not yet implemented: {exc}", file=sys.stderr)
-        return 1
     except Exception as exc:  # surface a clean message, non-zero exit
+        if os.environ.get("CREATIVITY_DEBUG"):
+            raise  # full traceback for diagnosis when debugging
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

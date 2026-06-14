@@ -76,17 +76,12 @@ def _load_spec(state: State, fallback: Optional[AxesSpec] = None) -> AxesSpec:
 # recall
 # --------------------------------------------------------------------------- #
 def recall(project: str, k: int = 10, home: Optional[Path] = None) -> Dict[str, Any]:
-    """Return memory for in-context injection (enriched by memory.py in Phase 5)."""
+    """Return memory for in-context injection: recent choices, pins, win tallies."""
+    from . import memory
+
     state = State(project, home=home)
     domain = _resolve_domain(state)
-    try:
-        from . import memory  # Phase 5; optional during early phases
-
-        return memory.recall(state, domain, k=k)
-    except ImportError:
-        comparisons = state.read_comparisons(domain)
-        pins = state.read_pins(domain)
-        return {"domain": domain, "preferences": comparisons[-k:], "pins": pins}
+    return memory.recall(state, domain, k=k)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +162,18 @@ def ingest(
     embedder = get_embedder()
     vecs = embedder.embed([c.text for c in cand_list])
 
+    # Guard: embeddings already persisted by a different embedder/dimension are
+    # incompatible (dedup/novelty would hit ragged arrays). Fail loudly instead.
+    if stored_emb:
+        existing_dim = len(next(iter(stored_emb.values())))
+        if existing_dim != vecs.shape[1]:
+            raise config.ConfigError(
+                f"project {project!r} has {existing_dim}-dim embeddings but the "
+                f"current embedder ({embedder.name!r}) produces {vecs.shape[1]}-dim "
+                f"vectors; reuse the original embedder ($CREATIVITY_EMBEDDER) or "
+                f"start a fresh project."
+            )
+
     # existing embeddings (archive elites) for dedup + novelty reference
     existing_ids = [eid for eid in arc.elite_ids() if eid in stored_emb]
     if existing_ids:
@@ -237,11 +244,16 @@ def ingest(
         slate_ids = [elite_ids[i] for i in sel]
         slate = [_slate_item(cand_store[i]) for i in slate_ids]
 
-    mon = monitor.evaluate(surv_vecs, arc.niche_counts())
+    # Monitor the RAW generation (pre-dedup) so a near-duplicate batch still
+    # registers as collapsing — dedup would otherwise hide it behind survivors.
+    mon = monitor.evaluate(vecs, arc.niche_counts())
 
     from . import memory
 
-    comparisons = state.read_comparisons(spec.domain)
+    # Namespace preference memory by the persisted snapshot domain so ingest is
+    # consistent with remember/recall/parents (which all resolve from state).
+    domain = _resolve_domain(state)
+    comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
     # persist
@@ -250,6 +262,8 @@ def ingest(
     state.write_candidates(cand_store)
     meta = state.read_meta()
     meta["cycles"] = int(meta.get("cycles", 0)) + 1
+    meta["embedder"] = embedder.name
+    meta["embedding_dim"] = int(vecs.shape[1])
     state.write_meta(meta)
 
     return {
@@ -284,7 +298,7 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Commands implemented in later phases (declared here so dispatch is explicit)
+# remember / parents / selftest
 # --------------------------------------------------------------------------- #
 def remember(project: str, event: Dict[str, Any],
              home: Optional[Path] = None) -> Dict[str, Any]:

@@ -111,6 +111,11 @@ class AxesSpec:
             return NotImplemented
         return self.to_dict() == other.to_dict()
 
+    def __hash__(self) -> int:
+        # Defining __eq__ otherwise makes the class unhashable; keep hashing
+        # consistent with equality (same resolved spec -> same hash).
+        return hash(json.dumps(self.to_dict(), sort_keys=True))
+
 
 @dataclass
 class Candidate:

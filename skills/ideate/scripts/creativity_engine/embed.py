@@ -179,18 +179,23 @@ def dedupe(
     n = vecs.shape[0]
     if n == 0:
         return [], []
-    kept_vecs: List[np.ndarray] = []
-    if existing is not None and len(existing) > 0:
-        kept_vecs.extend(np.asarray(existing, dtype=np.float32))
+    dim = vecs.shape[1]
+    # Running buffer of kept rows (existing seeds first, then survivors) so we
+    # never re-vstack the whole set on each step — one preallocated matrix.
+    n_existing = 0 if existing is None else len(existing)
+    kept = np.empty((n_existing + n, dim), dtype=np.float32)
+    count = 0
+    if n_existing:
+        kept[:n_existing] = np.asarray(existing, dtype=np.float32)
+        count = n_existing
     keep: List[int] = []
     drop: List[int] = []
     for i in range(n):
         v = vecs[i]
-        if kept_vecs:
-            sims = np.dot(np.vstack(kept_vecs), v)
-            if float(np.max(sims)) > tau:
-                drop.append(i)
-                continue
+        if count and float(np.max(kept[:count] @ v)) > tau:
+            drop.append(i)
+            continue
         keep.append(i)
-        kept_vecs.append(v)
+        kept[count] = v
+        count += 1
     return keep, drop

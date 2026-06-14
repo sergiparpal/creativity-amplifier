@@ -196,17 +196,16 @@ def select_parents(
         idx = farthest_point_sampling(pool_vecs, remaining)
         return selected + [pool[i] for i in idx]
 
-    chosen_vecs = [np.asarray(v, dtype=np.float64) for v in sel_vecs]
-    while len(selected) < k and pool:
-        # distance of each pool item to the nearest already-selected vector
-        sims = pool_vecs @ np.vstack(chosen_vecs).T  # (pool, chosen)
-        min_dist = 1.0 - np.max(sims, axis=1)         # nearest selected -> smallest dist
-        pick = int(np.argmax(min_dist))               # farthest from the set
+    # Farthest-point greedy with an incrementally maintained nearest-selected
+    # distance (no full recompute / re-vstack per pick). `alive` masks picks.
+    sel_mat = np.vstack([np.asarray(v, dtype=np.float64) for v in sel_vecs])
+    min_dist = 1.0 - (pool_vecs @ sel_mat.T).max(axis=1)  # nearest selected -> small
+    alive = np.ones(len(pool), dtype=bool)
+    while len(selected) < k and alive.any():
+        pick = int(np.argmax(np.where(alive, min_dist, -np.inf)))  # farthest from set
         selected.append(pool[pick])
-        chosen_vecs.append(pool_vecs[pick])
-        # remove picked from pool
-        keep = [r for r in range(len(pool)) if r != pick]
-        pool = [pool[r] for r in keep]
-        pool_vecs = pool_vecs[keep] if keep else pool_vecs[:0]
+        alive[pick] = False
+        # fold the newly chosen vector into the running nearest-selected distance
+        min_dist = np.minimum(min_dist, 1.0 - pool_vecs @ pool_vecs[pick])
 
     return selected

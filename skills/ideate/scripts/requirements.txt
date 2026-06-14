@@ -1,6 +1,5 @@
-numpy>=1.26
-scipy>=1.11            # determinant/eigh for DPP
-scikit-learn>=1.4      # NearestNeighbors, KMeans/CVT niching, HashingVectorizer
+numpy>=1.26            # all of the diversity math (DPP log-det, Vendi eigvalsh, novelty)
+scikit-learn>=1.4      # HashingVectorizer for the deterministic 'hash' embedder
 pyyaml>=6              # domain/axes config
 sentence-transformers>=2.7   # default local (live) embedder (CPU)
 pytest>=8              # dev/test only

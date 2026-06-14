@@ -157,6 +157,7 @@ creativity-amplifier/                  # plugin root (pass to --plugin-dir)
 │       ├── setup.sh, requirements.txt, pyproject.toml
 │       └── creativity_engine/         # the Python engine (CLI)
 ├── tests/                             # pytest (dev-only)
+├── docs/IMPLEMENTATION_PLAN.md        # internal build plan (historical)
 └── README.md
 ```
 
