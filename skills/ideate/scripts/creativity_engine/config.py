@@ -66,14 +66,20 @@ class Axis:
 
 @dataclass
 class AxesSpec:
-    """The fully-resolved descriptor space for a session."""
+    """The fully-resolved descriptor space for a session.
+
+    This is purely the engine's *geometry*: the descriptor axes plus
+    ``slate_size`` (the only runtime knob the engine itself consumes, when
+    sizing the DPP slate). Agent-/session-level settings that merely ride
+    alongside the axes in the same config file (how many candidates the agent
+    drafts, which rubric it prefilters with) live in :class:`SessionSettings`
+    so they don't leak into the engine's core type.
+    """
 
     domain: str
     unit_of_generation: str
     axes: List[Axis]
     slate_size: int = 6
-    candidates_per_generation: int = 12
-    judge_rubric: str = "references/judge_rubric.md"
 
     @property
     def axis_names(self) -> List[str]:
@@ -102,8 +108,6 @@ class AxesSpec:
             "unit_of_generation": self.unit_of_generation,
             "axes": [a.to_dict() for a in self.axes],
             "slate_size": self.slate_size,
-            "candidates_per_generation": self.candidates_per_generation,
-            "judge_rubric": self.judge_rubric,
         }
 
     def __eq__(self, other: object) -> bool:  # value equality for "load identically"
@@ -115,6 +119,42 @@ class AxesSpec:
         # Defining __eq__ otherwise makes the class unhashable; keep hashing
         # consistent with equality (same resolved spec -> same hash).
         return hash(json.dumps(self.to_dict(), sort_keys=True))
+
+
+@dataclass
+class SessionSettings:
+    """Agent-/session-level settings that live in the axes config but are NOT
+    engine geometry.
+
+    The engine never acts on these; the **agent** reads ``judge_rubric`` (which
+    rubric to prefilter with) and ``candidates_per_generation`` (how many ideas
+    to draft per cycle), and the self-test reads the latter. Keeping them out of
+    :class:`AxesSpec` keeps the engine's core type purely about the descriptor
+    space, sharpening the engine/agent contract boundary.
+    """
+
+    candidates_per_generation: int = 12
+    judge_rubric: str = "references/judge_rubric.md"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "candidates_per_generation": self.candidates_per_generation,
+            "judge_rubric": self.judge_rubric,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "SessionSettings":
+        if not isinstance(d, dict):
+            raise ConfigError(
+                f"settings must be an object, got {type(d).__name__}"
+            )
+        per_gen = int(d.get("candidates_per_generation", 12))
+        if per_gen < 1:
+            raise ConfigError("'candidates_per_generation' must be >= 1")
+        return cls(
+            candidates_per_generation=per_gen,
+            judge_rubric=str(d.get("judge_rubric", "references/judge_rubric.md")),
+        )
 
 
 @dataclass
@@ -261,32 +301,28 @@ def axes_spec_from_dict(d: Dict[str, Any]) -> AxesSpec:
         )
 
     slate = int(d.get("slate_size", 6))
-    per_gen = int(d.get("candidates_per_generation", 12))
     if slate < 1:
         raise ConfigError("'slate_size' must be >= 1")
-    if per_gen < 1:
-        raise ConfigError("'candidates_per_generation' must be >= 1")
 
     return AxesSpec(
         domain=str(d.get("domain", "ad-hoc")),
         unit_of_generation=str(d.get("unit_of_generation", "idea")),
         axes=axes,
         slate_size=slate,
-        candidates_per_generation=per_gen,
-        judge_rubric=str(d.get("judge_rubric", "references/judge_rubric.md")),
     )
 
 
-def load_axes(source: Union[str, Path, Dict[str, Any]]) -> AxesSpec:
-    """Load axes from a dict, a ``.json`` file, or a ``.yaml``/``.yml`` file.
+def _load_config_dict(source: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
+    """Read a raw config dict from a dict, a ``.json`` file, or a ``.yaml`` file.
 
-    All three paths produce an identical :class:`AxesSpec`.
+    Shared by :func:`load_axes` and :func:`load_session_settings` so axes and
+    settings parse identically out of the same file.
     """
     if isinstance(source, dict):
-        return axes_spec_from_dict(source)
+        return source
     path = Path(source)
     if not path.exists():
-        raise ConfigError(f"axes source not found: {path}")
+        raise ConfigError(f"config source not found: {path}")
     text = path.read_text(encoding="utf-8")
     suffix = path.suffix.lower()
     try:
@@ -298,10 +334,26 @@ def load_axes(source: Union[str, Path, Dict[str, Any]]) -> AxesSpec:
             # Be forgiving: try yaml (a superset of json) for unknown extensions.
             data = yaml.safe_load(text)
     except (yaml.YAMLError, json.JSONDecodeError) as exc:
-        raise ConfigError(f"could not parse axes file {path}: {exc}") from exc
+        raise ConfigError(f"could not parse config file {path}: {exc}") from exc
     if data is None:
-        raise ConfigError(f"axes file {path} is empty")
-    return axes_spec_from_dict(data)
+        raise ConfigError(f"config file {path} is empty")
+    return data
+
+
+def load_axes(source: Union[str, Path, Dict[str, Any]]) -> AxesSpec:
+    """Load axes from a dict, a ``.json`` file, or a ``.yaml``/``.yml`` file.
+
+    All three paths produce an identical :class:`AxesSpec`.
+    """
+    return axes_spec_from_dict(_load_config_dict(source))
+
+
+def load_session_settings(
+    source: Union[str, Path, Dict[str, Any]]
+) -> SessionSettings:
+    """Load the agent-/session-level :class:`SessionSettings` from the same
+    dict/file the axes come from (missing keys fall back to defaults)."""
+    return SessionSettings.from_dict(_load_config_dict(source))
 
 
 def generic_axes_path() -> Path:

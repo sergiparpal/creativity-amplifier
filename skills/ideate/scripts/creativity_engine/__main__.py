@@ -13,7 +13,7 @@ import os
 import sys
 from typing import Any
 
-from . import config, pipeline
+from . import config, pipeline, selftest
 
 
 def _emit(obj: Any) -> None:
@@ -91,7 +91,7 @@ def main(argv=None) -> int:
         elif args.command == "metrics":
             _emit(pipeline.metrics(args.project))
         elif args.command == "selftest":
-            report = pipeline.selftest(
+            report = selftest.run(
                 project=args.project, live=args.live, seed=args.seed
             )
             _emit(report)

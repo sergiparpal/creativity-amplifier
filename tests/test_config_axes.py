@@ -13,9 +13,11 @@ from creativity_engine.__main__ import main
 from creativity_engine.config import (
     AxesSpec,
     ConfigError,
+    SessionSettings,
     axes_spec_from_dict,
     load_axes,
     load_generic_axes,
+    load_session_settings,
 )
 
 
@@ -72,6 +74,35 @@ def test_round_trip_to_dict_is_stable():
     spec = axes_spec_from_dict(SPEC_DICT)
     again = axes_spec_from_dict(spec.to_dict())
     assert spec == again
+
+
+def test_axes_spec_is_pure_geometry():
+    # Agent-/session-level settings must NOT leak into the engine's core type.
+    spec = axes_spec_from_dict(SPEC_DICT)
+    assert not hasattr(spec, "candidates_per_generation")
+    assert not hasattr(spec, "judge_rubric")
+    serialized = spec.to_dict()
+    assert "candidates_per_generation" not in serialized
+    assert "judge_rubric" not in serialized
+
+
+def test_session_settings_load_from_same_source():
+    # The settings ride alongside the axes in one file and parse out separately.
+    settings = load_session_settings(SPEC_DICT)
+    assert settings.candidates_per_generation == 10
+    assert settings.judge_rubric == "references/judge_rubric.md"
+
+
+def test_session_settings_default_when_absent():
+    settings = load_session_settings({"axes": []})  # axes ignored by this loader
+    assert settings == SessionSettings()
+    assert settings.candidates_per_generation == 12
+
+
+def test_session_settings_rejects_bad_count():
+    with pytest.raises(ConfigError) as exc:
+        SessionSettings.from_dict({"candidates_per_generation": 0})
+    assert "candidates_per_generation" in str(exc.value)
 
 
 def test_generic_fallback_loads_and_is_valid():

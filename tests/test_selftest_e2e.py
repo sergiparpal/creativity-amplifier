@@ -6,13 +6,13 @@ import json
 
 import pytest
 
-from creativity_engine import pipeline
+from creativity_engine import selftest
 from creativity_engine.__main__ import main
 
 
 @pytest.fixture
 def report(home):
-    return pipeline.selftest(project="e2e", seed=0, home=home)
+    return selftest.run(project="e2e", seed=0, home=home)
 
 
 def test_selftest_ok(report):
@@ -48,8 +48,8 @@ def test_state_files_written(report):
 
 
 def test_selftest_is_deterministic(home):
-    r1 = pipeline.selftest(project="det1", seed=0, home=home)
-    r2 = pipeline.selftest(project="det2", seed=0, home=home)
+    r1 = selftest.run(project="det1", seed=0, home=home)
+    r2 = selftest.run(project="det2", seed=0, home=home)
     assert r1["value_gate"]["engine"] == r2["value_gate"]["engine"]
     assert r1["value_gate"]["single_shot"] == r2["value_gate"]["single_shot"]
     assert (

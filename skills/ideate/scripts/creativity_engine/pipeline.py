@@ -25,8 +25,8 @@ from . import (
     novelty,
 )
 from .config import AxesSpec, Candidate
-from .embed import dedupe, get_embedder
-from .state import State
+from .embed import dedupe
+from .session import Session
 
 # Tuning knobs (kept modest so first results stay quick — see plan §10 latency).
 DEDUP_TAU = 0.92
@@ -44,40 +44,30 @@ def init_project(
     seed: int = 0,
     home: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Create state dirs and snapshot the resolved axes for the session."""
+    """Create state dirs and snapshot the resolved axes for the session.
+
+    The axes geometry goes to ``axes.json``; the agent-/session-level settings
+    that ride alongside it (candidates-per-generation, judge rubric) are
+    recorded in ``meta.json`` — kept out of the engine's :class:`AxesSpec`.
+    """
     spec = config.load_axes(axes_source)
-    state = State(project, home=home).ensure()
-    state.write_axes(spec.to_dict())
-    meta = state.read_meta()
+    settings = config.load_session_settings(axes_source)
+    sess = Session(project, home=home, seed=seed).ensure()
+    sess.adopt_spec(spec)
+    meta = sess.state.read_meta()
     meta.update(
         {
             "project": project,
             "domain": spec.domain,
             "unit_of_generation": spec.unit_of_generation,
+            "candidates_per_generation": settings.candidates_per_generation,
+            "judge_rubric": settings.judge_rubric,
             "seed": int(seed),
             "version": __version__,
         }
     )
-    state.write_meta(meta)
-    return {"ok": True, "domain": spec.domain, "paths": state.paths()}
-
-
-def _resolve_domain(state: State) -> str:
-    axes = state.read_axes()
-    if axes and isinstance(axes, dict):
-        return str(axes.get("domain", "default"))
-    return "default"
-
-
-def _load_spec(state: State, fallback: Optional[AxesSpec] = None) -> AxesSpec:
-    axes = state.read_axes()
-    if axes:
-        return config.axes_spec_from_dict(axes)
-    if fallback is not None:
-        return fallback
-    raise config.ConfigError(
-        f"no axes snapshot for project {state.project!r}; run init-project first"
-    )
+    sess.state.write_meta(meta)
+    return {"ok": True, "domain": spec.domain, "paths": sess.state.paths()}
 
 
 # --------------------------------------------------------------------------- #
@@ -85,9 +75,8 @@ def _load_spec(state: State, fallback: Optional[AxesSpec] = None) -> AxesSpec:
 # --------------------------------------------------------------------------- #
 def recall(project: str, k: int = 10, home: Optional[Path] = None) -> Dict[str, Any]:
     """Return memory for in-context injection: recent choices, pins, win tallies."""
-    state = State(project, home=home)
-    domain = _resolve_domain(state)
-    return memory.recall(state, domain, k=k)
+    sess = Session(project, home=home)
+    return memory.recall(sess.state, sess.domain, k=k)
 
 
 # --------------------------------------------------------------------------- #
@@ -289,9 +278,12 @@ def ingest(
 ) -> Dict[str, Any]:
     """Embed → dedup → place → novelty → archive → DPP → monitor for one cycle."""
     spec = config.load_axes(axes_source)
-    state = State(project, home=home).ensure()
-    if state.read_axes() is None:
-        state.write_axes(spec.to_dict())
+    sess = Session(project, home=home, seed=seed).ensure()
+    # The axes passed in are authoritative for this cycle; snapshot them only on
+    # a fresh project so an existing project keeps its original resolved axes.
+    if sess.state.read_axes() is None:
+        sess.adopt_spec(spec)
+    state = sess.state
 
     cand_list = _parse_candidates(candidates)
     arc = archive_mod.Archive.from_dict(spec, state.read_archive())
@@ -301,7 +293,7 @@ def ingest(
     stored_emb: Dict[str, List[float]] = state.read_embeddings()
     cand_store: Dict[str, Any] = state.read_candidates()
 
-    embedder = get_embedder()
+    embedder = sess.embedder
     vecs = embedder.embed([c.text for c in cand_list])
     _guard_embedding_dim(stored_emb, vecs, embedder, project)
 
@@ -331,9 +323,9 @@ def ingest(
     # registers as collapsing — dedup would otherwise hide it behind survivors.
     mon = monitor.evaluate(vecs, arc.niche_counts())
 
-    # Namespace preference memory by the persisted snapshot domain so ingest is
-    # consistent with remember/recall/parents (which all resolve from state).
-    domain = _resolve_domain(state)
+    # Namespace preference memory by the session domain so ingest is consistent
+    # with remember/recall/parents (all share Session's snapshot resolution).
+    domain = sess.domain
     comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
@@ -351,10 +343,9 @@ def ingest(
 # --------------------------------------------------------------------------- #
 def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     """Current archive health: entropy, mean cosine, coverage, n."""
-    state = State(project, home=home)
-    spec = _load_spec(state, fallback=config.load_generic_axes())
-    arc = archive_mod.Archive.from_dict(spec, state.read_archive())
-    stored_emb = state.read_embeddings()
+    sess = Session(project, home=home)
+    arc = archive_mod.Archive.from_dict(sess.spec, sess.state.read_archive())
+    stored_emb = sess.state.read_embeddings()
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
     elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=1)
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
@@ -367,27 +358,25 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# remember / parents / selftest
+# remember / parents
 # --------------------------------------------------------------------------- #
 def remember(project: str, event: Dict[str, Any],
              home: Optional[Path] = None) -> Dict[str, Any]:
     """Append a comparison/pin to this domain's preference memory."""
-    state = State(project, home=home).ensure()
-    domain = _resolve_domain(state)
-    return memory.remember(state, domain, event)
+    sess = Session(project, home=home).ensure()
+    return memory.remember(sess.state, sess.domain, event)
 
 
 def parents(project: str, k: int = 4, seed: int = 0,
             home: Optional[Path] = None) -> Dict[str, Any]:
     """Diverse parents for the next generation; pinned stepping stones kept."""
-    state = State(project, home=home)
-    spec = _load_spec(state, fallback=config.load_generic_axes())
-    arc = archive_mod.Archive.from_dict(spec, state.read_archive())
-    stored_emb = state.read_embeddings()
-    cand_store = state.read_candidates()
-    # Resolve the memory namespace the same way recall/ingest/remember do, so
-    # pins are read from the namespace they were written to.
-    pins = state.read_pins(_resolve_domain(state))
+    sess = Session(project, home=home, seed=seed)
+    arc = archive_mod.Archive.from_dict(sess.spec, sess.state.read_archive())
+    stored_emb = sess.state.read_embeddings()
+    cand_store = sess.state.read_candidates()
+    # Session.domain is the shared snapshot-resolved namespace, so pins are read
+    # from the namespace recall/ingest/remember wrote them to.
+    pins = sess.state.read_pins(sess.domain)
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
     chosen = memory.select_parents(elite_ids, stored_emb, pins, k)
     records = []
@@ -404,11 +393,3 @@ def parents(project: str, k: int = 4, seed: int = 0,
             }
         )
     return {"parents": records}
-
-
-def selftest(project: str = "selftest", live: bool = False, seed: int = 0,
-             home: Optional[Path] = None) -> Dict[str, Any]:
-    """Full loop with a stubbed LLM + human, plus value gate & collapse reversal."""
-    from . import selftest as _selftest
-
-    return _selftest.run(project=project, live=live, seed=seed, home=home)
