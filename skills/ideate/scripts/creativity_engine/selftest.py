@@ -213,10 +213,11 @@ def _dpp_isolation_metrics(spec, settings, embedder, seed, n_seeds=3):
     """
     dpp_mpds, firstn_mpds = [], []
     dpp_example, firstn_example = None, None
+    # A pool large enough that a random first-N reliably draws some near-clones,
+    # so the geometric gap is unmistakable under any embedder (not just hash).
+    pool_n = max(4 * spec.slate_size, settings.candidates_per_generation)
     for s in range(seed, seed + n_seeds):
-        cands = dpp_isolation_candidates(
-            settings.candidates_per_generation, spec.slate_size
-        )
+        cands = dpp_isolation_candidates(pool_n, spec.slate_size)
         vecs, niches = _place(cands, spec, embedder, s)
         order = np.random.default_rng(s).permutation(len(cands))
         vecs = vecs[order]
@@ -294,9 +295,24 @@ def _live_semantic_check(live: bool) -> Dict[str, Any]:
 
 
 def _collapse_reversal(spec, settings, axes, seed, home, project):
-    """A samey generation must trip the monitor; the next diverse one recovers."""
+    """A samey generation must trip the monitor; the next diverse one recovers.
+
+    First warm up the monitor's rolling baseline with a couple of diverse
+    generations, so the similarity flag is calibrated to *this embedder's*
+    natural cosine scale before collapse/recovery are judged. Without the warm-up
+    the absolute fallback (tuned for the hash fixture) misfires under a sentence
+    embedder, where even diverse short ideas sit well above 0.55 — exactly the
+    misfire the calibrated monitor exists to prevent. This exercises the relative
+    path end-to-end under both embedders.
+    """
     cproj = f"{project}-collapse"
     pipeline.init_project(cproj, axes, seed=seed, home=home)
+    for g in range(2):
+        pipeline.ingest(
+            cproj,
+            diverse_candidates(settings.candidates_per_generation, gen=g, prefix="warm"),
+            axes, seed=seed, home=home,
+        )
     collapsed = pipeline.ingest(
         cproj, collapsing_candidates(8), axes, seed=seed, home=home
     )
