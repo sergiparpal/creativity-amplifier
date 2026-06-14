@@ -261,12 +261,15 @@ def _accumulate_and_maybe_freeze(
     )
     cell_by_nid = _elite_open_cells(arc, cand_store, open_axis, embedder, nicher)
     arc.rekey_open_axis(spec, open_axis.name, cell_by_nid)
-    # Surviving elites carry the old niche id in their candidate record — refresh.
-    for nid, niche in arc.niches.items():
+    # keep cand_store display fields consistent with the re-keyed archive: slate
+    # items are built from these elite records (`_slate_item`), so an elite placed
+    # before the freeze would otherwise display a stale niche_id/coords. Elites are
+    # the only candidates ever shown, so non-elite history is left untouched.
+    for niche in arc.niches.values():
         rec = cand_store.get(niche.elite_id)
         if rec is not None:
-            rec["niche_id"] = nid
-            rec["coords"] = niche.coords
+            rec["niche_id"] = niche.id
+            rec["coords"] = dict(niche.coords)
 
     frozen = nicher.to_dict()
     frozen["frozen"] = True

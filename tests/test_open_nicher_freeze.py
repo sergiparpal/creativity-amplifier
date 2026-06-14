@@ -150,6 +150,58 @@ def test_niche_ids_stable_after_freeze(home):
         assert nicher.cell(emb.embed([mech])[0]) == _cell_of(niche.id)
 
 
+def test_freeze_refreshes_cand_store_and_slate_consistency(home):
+    """After a freeze re-keys the archive, the elite candidate records (the ones
+    slates are built from) must carry the NEW niche id/coords, and every slate
+    item must point at a niche that actually exists in the re-keyed archive."""
+    spec = axes_spec_from_dict(SPEC)
+    project = "consistency"
+    threshold = pipeline.OPEN_NICHE_FREEZE_FACTOR * pipeline.OPEN_NICHES
+    result = pipeline.ingest(project, _candidates(threshold + 4), SPEC, seed=0, home=home)
+
+    state = State(project, home=home)
+    on = state.read_open_nicher()
+    assert on is not None and on["frozen"] is True  # the freeze really fired
+
+    arc = Archive.from_dict(spec, state.read_archive())
+    cand = state.read_candidates()
+    assert len(arc.niches) >= 2
+
+    # Every elite record's display fields were re-synced to the re-keyed archive.
+    for niche in arc.niches.values():
+        rec = cand[niche.elite_id]
+        assert rec["niche_id"] == niche.id
+        assert rec["coords"] == niche.coords
+
+    # Every slate item points at a niche present in the post-freeze archive
+    # (no stale niche_id survives the re-key).
+    archive_ids = set(arc.niches)
+    assert result["slate"]  # the freeze cycle still produced a slate
+    for item in result["slate"]:
+        assert item["niche_id"] in archive_ids
+
+
+def test_freeze_slate_selection_is_deterministic(home):
+    """The display-field refresh must not perturb selection: slate ids are driven
+    by the archive elites + embeddings, not the cand_store display fields, so two
+    identical seeded runs across the freeze must yield the same slate ids."""
+    spec = axes_spec_from_dict(SPEC)
+    threshold = pipeline.OPEN_NICHE_FREEZE_FACTOR * pipeline.OPEN_NICHES
+    cands = _candidates(threshold + 4)
+
+    r1 = pipeline.ingest("det-a", cands, SPEC, seed=0, home=home)
+    r2 = pipeline.ingest("det-b", cands, SPEC, seed=0, home=home)
+
+    ids1 = {item["id"] for item in r1["slate"]}
+    ids2 = {item["id"] for item in r2["slate"]}
+    assert ids1 and ids1 == ids2
+
+    # Slate ids are a subset of the archive's elite ids (selection is the archive's
+    # job, untouched by the niche_id/coords refresh).
+    arc = Archive.from_dict(spec, State("det-a", home=home).read_archive())
+    assert ids1 <= set(arc.elite_ids())
+
+
 def test_cold_start_before_threshold_is_not_frozen(home):
     project = "cold"
     # Well below the freeze threshold -> still accumulating, no centroids yet.
