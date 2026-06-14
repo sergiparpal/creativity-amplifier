@@ -13,8 +13,11 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
 
 - **Diversity is decoupled from the judge.** Geometry owns *novelty* (embeddings,
   MAP-Elites niching, k-NN novelty, DPP selection); the judge only filters
-  *validity / on-brief* and ranks *within* a niche. The judge never prunes
-  variety, and never picks the final slate.
+  *validity / on-brief* and ranks *within* a niche. Its fitness has just a
+  **bounded, low-weight** say in the DPP slate — quality-weighted diversity
+  (weight 0.3, fitness clipped to a [0.7, 1.3] multiplier) — so it can never
+  prune variety or collapse the slate's diversity, and **you** remain the
+  final selector.
 - **A different embedding family from the agent.** The local embedder is
   `sentence-transformers` (`BAAI/bge-small-en-v1.5`, CPU) — a different model
   family from Claude — so "what's novel" isn't judged by the same lineage that
@@ -81,7 +84,8 @@ The skill follows `skills/ideate/references/loop.md`. One cycle:
    invalid / off-brief candidates — never to cut variety.
 4. **Ingest (engine).** Survivors are embedded, deduped, placed into MAP-Elites
    niches over the resolved axes, scored for novelty, kept one-elite-per-niche,
-   and a **DPP** picks a diverse slate. The **anti-collapse monitor** runs.
+   and a **DPP** picks a quality-weighted diverse slate (geometry dominates; the
+   judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs.
 5. **Select (you).** Claude shows the slate with each idea's niche coordinates and
    asks only the most-informative A-vs-B pairs. You can **pin** stepping stones.
 6. **Remember & loop.** Choices/pins go to local preference memory (namespaced per

@@ -121,19 +121,54 @@ def farthest_point_sampling(
     return selected
 
 
+def bounded_quality(
+    quality: np.ndarray,
+    weight: float,
+    lo: float = 0.7,
+    hi: float = 1.3,
+) -> np.ndarray:
+    """Map raw judge fitness into a **bounded** multiplicative quality factor.
+
+    The DPP kernel uses quality multiplicatively, so an unbounded fitness from the
+    agent could swamp the diversity term. We first affine-rescale the *observed*
+    fitness range to ``[lo, hi]`` (uniform fitness → all ones → pure diversity),
+    then damp toward uniform by ``weight`` (a quality-diversity knob): ``weight=0``
+    gives pure diversity, ``weight=1`` the full ``[lo, hi]`` spread. The result is
+    clipped to ``[lo, hi]`` so quality can never dominate the kernel.
+    """
+    q = np.asarray(quality, dtype=np.float64).reshape(-1)
+    qmin, qmax = float(q.min()), float(q.max())
+    if qmax - qmin < 1e-12:
+        rescaled = np.ones_like(q)
+    else:
+        rescaled = lo + (hi - lo) * (q - qmin) / (qmax - qmin)
+    w = float(np.clip(weight, 0.0, 1.0))
+    blended = (1.0 - w) * np.ones_like(q) + w * rescaled
+    return np.clip(blended, lo, hi)
+
+
 def select_diverse(
     vecs: np.ndarray,
     k: int,
     quality: Optional[np.ndarray] = None,
     seed: int = 0,
+    quality_weight: float = 1.0,
 ) -> List[int]:
-    """Pick ``k`` diverse item indices. Greedy DPP, farthest-point fallback."""
+    """Pick ``k`` diverse item indices. Greedy DPP, farthest-point fallback.
+
+    When ``quality`` is given it is bounded by :func:`bounded_quality` (using
+    ``quality_weight``) before entering the kernel, so the slate is
+    quality-*weighted* diversity: geometry still owns spread and the judge's
+    fitness can only nudge the ordering, never collapse diversity.
+    """
     vecs = np.asarray(vecs, dtype=np.float64)
     n = vecs.shape[0]
     if n == 0:
         return []
     if k >= n:
         return list(range(n))
+    if quality is not None:
+        quality = bounded_quality(quality, quality_weight)
     try:
         kernel = build_kernel(vecs, quality=quality)
         sel = greedy_map_dpp(kernel, k)

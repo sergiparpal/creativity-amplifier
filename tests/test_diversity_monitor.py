@@ -84,6 +84,54 @@ def test_farthest_point_fallback_runs():
 
 
 # --------------------------------------------------------------------------- #
+# Quality-weighted diversity: the judge's fitness is bounded
+# --------------------------------------------------------------------------- #
+def test_uniform_fitness_is_pure_diversity():
+    pool = _clustered_pool(groups=5, per=6, seed=11)
+    pure = diversity.select_diverse(pool, k=5)
+    # Uniform fitness must leave the slate identical to pure diversity, at any weight.
+    ones = np.ones(len(pool))
+    assert diversity.select_diverse(pool, k=5, quality=ones, quality_weight=0.3) == pure
+    assert diversity.select_diverse(pool, k=5, quality=ones, quality_weight=1.0) == pure
+    # bounded_quality maps a flat input to all-ones (no weighting)
+    assert np.allclose(diversity.bounded_quality(ones, 1.0), 1.0)
+
+
+def test_bounded_quality_clips_extremes():
+    q = np.array([-1e6, 0.0, 1e6])
+    b = diversity.bounded_quality(q, weight=1.0)
+    assert b.min() >= 0.7 - 1e-9 and b.max() <= 1.3 + 1e-9
+
+
+def test_extreme_fitness_does_not_collapse_slate_diversity():
+    pool = _clustered_pool(groups=5, per=6, seed=12)
+    # group 0 (indices 0..5) gets absurdly high fitness; everything else ~0.
+    quality = np.full(len(pool), 0.01)
+    quality[:6] = 1e3
+
+    pure = diversity.select_diverse(pool, k=5)
+    bounded = diversity.select_diverse(pool, k=5, quality=quality, quality_weight=0.3)
+
+    pure_mpd = diversity.mean_pairwise_distance(pool[pure])
+    bounded_mpd = diversity.mean_pairwise_distance(pool[bounded])
+
+    # The bounded slate stays essentially as diverse as pure diversity...
+    assert bounded_mpd >= pure_mpd - 0.05
+    # ...and still spans the groups (picks are mutually near-orthogonal), rather
+    # than collapsing into the single high-fitness cluster.
+    v = pool[bounded]
+    off = (v @ v.T)[np.triu_indices(len(bounded), k=1)]
+    assert np.max(off) < 0.6
+
+    # Feeding the SAME extreme fitness in raw (unbounded) collapses diversity,
+    # which is exactly what the bounding prevents.
+    raw_kernel = diversity.build_kernel(pool, quality=quality)
+    raw_sel = diversity.greedy_map_dpp(raw_kernel, 5)
+    raw_mpd = diversity.mean_pairwise_distance(pool[raw_sel])
+    assert bounded_mpd > raw_mpd
+
+
+# --------------------------------------------------------------------------- #
 # Monitor
 # --------------------------------------------------------------------------- #
 def test_monitor_flags_near_duplicate_stream():

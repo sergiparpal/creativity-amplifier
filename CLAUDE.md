@@ -28,8 +28,11 @@ and any change must preserve it:
 - **Geometry (the engine) owns *novelty / diversity*** — embeddings, MAP-Elites niching, k-NN
   novelty, DPP selection.
 - **The LLM (agent) owns only *validity* and *within-niche ranking***. The judge filters off-brief
-  candidates and may attach a `fitness` (0–1) that ranks *within* a niche — it may **never** prune
-  variety or pick the final slate.
+  candidates and may attach a `fitness` (0–1) that ranks *within* a niche. That fitness is also
+  allowed a **bounded, low-weight** say in the DPP slate (quality-weighted diversity): it is
+  affine-rescaled and **clipped to a [0.7, 1.3] multiplier** and blended at `QUALITY_WEIGHT=0.3`, so
+  it can nudge ordering but can **never** prune variety, collapse the slate's diversity, or pick the
+  final slate. (Set the weight to 0 for pure diversity.)
 - **The user is the real selector.** The engine proposes a diverse slate + the most-informative
   A-vs-B pairs; the human chooses and pins "stepping stones".
 - The local embedder is deliberately a **different model family** from Claude

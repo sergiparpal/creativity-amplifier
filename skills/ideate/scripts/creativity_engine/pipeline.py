@@ -41,6 +41,10 @@ MONITOR_WINDOW = 5
 OPEN_NICHES = 24
 OPEN_NICHE_FREEZE_FACTOR = 4
 MAX_DPP_POOL = 200
+# How much the judge's (bounded) fitness is allowed to weight the DPP slate.
+# 0 -> pure diversity; 1 -> full quality-diversity. Kept low so geometry owns
+# the slate and the judge can only nudge ordering within an already-diverse pool.
+QUALITY_WEIGHT = 0.3
 
 
 # --------------------------------------------------------------------------- #
@@ -348,7 +352,8 @@ def _select_slate(
     elite_vecs = np.asarray([stored_emb[i] for i in elite_ids], dtype=np.float32)
     quality = np.asarray([e[1] for e in elites], dtype=np.float64)
     sel = diversity.select_diverse(
-        elite_vecs, k=spec.slate_size, quality=quality, seed=seed
+        elite_vecs, k=spec.slate_size, quality=quality, seed=seed,
+        quality_weight=QUALITY_WEIGHT,
     )
     slate_ids = [elite_ids[i] for i in sel]
     slate = [_slate_item(cand_store[i]) for i in slate_ids]
