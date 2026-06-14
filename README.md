@@ -83,7 +83,9 @@ The skill follows `skills/ideate/references/loop.md`. One cycle:
 3. **Prefilter (agent).** Claude applies `references/judge_rubric.md` to drop only
    invalid / off-brief candidates — never to cut variety.
 4. **Ingest (engine).** Survivors are embedded, deduped, placed into MAP-Elites
-   niches over the resolved axes, scored for novelty, kept one-elite-per-niche,
+   niches over the resolved axes (the open "mechanism" axis uses a **data-adaptive
+   partition** — deterministic cold-start cells that fit once via k-means and then
+   freeze, so niche ids stay stable), scored for novelty, kept one-elite-per-niche,
    and a **DPP** picks a quality-weighted diverse slate (geometry dominates; the
    judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs.
 5. **Select (you).** Claude shows the slate with each idea's niche coordinates and
@@ -176,9 +178,9 @@ creativity-amplifier/                  # plugin root (pass to --plugin-dir)
 
 ## Background
 
-The design rationale — why diversity is owned by geometry and never by the judge, and how this
-maps onto blind-variation/selective-retention, Quality-Diversity (MAP-Elites, novelty search), and
-DPP selection — is written up in [`docs/PAPER.md`](docs/PAPER.md).
+The design rationale — why diversity is owned by geometry while the judge's say in the slate stays
+bounded, and how this maps onto blind-variation/selective-retention, Quality-Diversity (MAP-Elites,
+novelty search), and DPP selection — is written up in [`docs/PAPER.md`](docs/PAPER.md).
 
 ## License
 
