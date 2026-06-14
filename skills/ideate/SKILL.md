@@ -25,9 +25,12 @@ slate. The user is the real selector.
 Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
 
 1. **Ensure the engine is ready.** If `${CLAUDE_SKILL_DIR}/.venv` is missing, run
-   `bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh` (one-time, installs deps).
-2. **Set** `ENGINE = ${CLAUDE_SKILL_DIR}/.venv/bin/python -m creativity_engine`
-   and choose a short `PROJECT` id for this session.
+   the cross-platform bootstrap once (creates the venv + installs deps for this OS):
+   `python3 ${CLAUDE_SKILL_DIR}/scripts/bootstrap.py`
+   (on Windows use `python` or `py` instead of `python3`).
+2. **Set** `ENGINE = "<PYBIN>" -m creativity_engine`, where `<PYBIN>` is the path in
+   `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt` (written by the bootstrap). Quote it —
+   the Windows path may contain spaces. Then choose a short `PROJECT` id for this session.
 3. **Resolve axes for this session** (diversity is only meaningful relative to a
    set of descriptor axes). Cascade:
    - if the user named a domain that has a config in

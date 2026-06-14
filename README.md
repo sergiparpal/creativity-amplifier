@@ -36,8 +36,8 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
 Requirements: Claude Code (latest), Python 3.11+.
 
 ```bash
-# 1. Install the engine's dependencies (creates skills/ideate/.venv)
-bash skills/ideate/scripts/setup.sh
+# 1. Build the engine venv (Windows / macOS / Linux)
+python3 skills/ideate/scripts/bootstrap.py     # Windows: python ... or py ...
 
 # 2. Load the plugin in Claude Code without installing it
 claude --plugin-dir .

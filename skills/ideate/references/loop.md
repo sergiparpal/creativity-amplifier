@@ -7,7 +7,8 @@ follow this file. Everything is domain-agnostic: the only domain knowledge is th
 Set once:
 
 ```
-ENGINE = ${CLAUDE_SKILL_DIR}/.venv/bin/python -m creativity_engine
+ENGINE = "<PYBIN>" -m creativity_engine    # <PYBIN> = contents of
+                                           # ${CLAUDE_SKILL_DIR}/.venv/engine-python.txt
 PROJECT = <short slug for this session, e.g. "campaign-jun14">
 ```
 
@@ -22,8 +23,11 @@ reproducibility.
 If `${CLAUDE_SKILL_DIR}/.venv` does not exist, run once:
 
 ```
-bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh
+python3 ${CLAUDE_SKILL_DIR}/scripts/bootstrap.py   # Windows: python ... or py ...
 ```
+
+Then read the interpreter path from `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt`
+and use it as `<PYBIN>` in the command above.
 
 This creates the venv and installs deps (local CPU embedder, no API key). If the
 user wants a hosted embedder, they set `CREATIVITY_EMBEDDER=api` plus the
