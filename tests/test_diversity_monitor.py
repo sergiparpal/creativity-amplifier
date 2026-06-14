@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from creativity_engine import diversity, monitor
+from creativity_engine import config, diversity, monitor, pipeline, selftest
+from creativity_engine.state import State
 
 
 def _unit(v):
@@ -203,3 +204,65 @@ def test_absolute_safety_ceiling_catches_high_baseline():
     # just under the ceiling and under baseline+margin -> not flagged
     under = monitor.evaluate(_pair(0.78), niche_counts=[5, 5, 5], baseline=[0.7, 0.7])
     assert under["collapsing"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Calibration baseline must not be trained by the collapse it detects
+# --------------------------------------------------------------------------- #
+def _mild_collapse_generation(n: int, r: int):
+    """A samey-but-not-duplicate generation: one niche/theme, modest wording
+    variation, so its mean cosine sits in the band BETWEEN the calibrated limit
+    and the absolute ceiling (~0.72 under the hash embedder). The relative rule
+    is the only thing that can catch it."""
+    base = "A local workshop teaching {topic} skills to curious {who} on {day}"
+    topics = ["pottery", "baking", "sketching", "gardening",
+              "weaving", "cooking", "painting", "writing"]
+    whos = ["beginners", "families", "students", "retirees",
+            "teens", "neighbors", "artists", "makers"]
+    days = ["Monday", "Tuesday", "weekends", "Friday",
+            "Sunday", "Thursday", "evenings", "mornings"]
+    return [
+        {
+            "id": f"m{r}-{i}",
+            "text": base.format(topic=topics[i % 8], who=whos[i % 8], day=days[i % 8]),
+            "descriptor": {"angle": "learning", "scope": "local", "form": "event",
+                           "boldness": 0.4, "mechanism": "peer teaching"},
+            "genealogy": {"operator_id": "mutation"},
+        }
+        for i in range(n)
+    ]
+
+
+def test_sustained_collapse_does_not_desensitize_the_monitor(home):
+    """Regression: a sustained sub-ceiling collapse must keep tripping the flag.
+
+    The calibration baseline is trained only on HEALTHY generations, so feeding
+    the monitor an identical mild-collapse generation every round must NOT let it
+    raise its own limit past the collapse and go quiet (the "boiling-frog" bug).
+    """
+    spec = config.load_generic_axes()
+    axes = spec.to_dict()
+    proj = "no-desensitize"
+    pipeline.init_project(proj, axes, seed=0, home=home)
+    # Warm the calibration window with two genuinely diverse generations.
+    for g in range(2):
+        pipeline.ingest(
+            proj, selftest.diverse_candidates(12, gen=g, prefix="warm"),
+            axes, seed=0, home=home,
+        )
+
+    limits = []
+    for r in range(8):
+        res = pipeline.ingest(proj, _mild_collapse_generation(8, r), axes,
+                              seed=0, home=home)
+        mon = res["monitor"]
+        # The very same generation must stay flagged on every round...
+        assert mon["collapsing"] is True, f"monitor went quiet on round {r}: {mon}"
+        limits.append(mon["cos_limit"])
+
+    # ...because the limit never climbs (collapsing generations never entered the
+    # baseline), so it stays pinned at the healthy-warmup calibration.
+    assert limits == [limits[0]] * len(limits)
+    # And the window holds only the two healthy warmup samples, not the collapses.
+    cos_window = State(proj, home=home).read_meta().get("cos_window", [])
+    assert len(cos_window) == 2

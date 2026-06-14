@@ -113,7 +113,12 @@ near-duplicate batch still registers as collapsing instead of being hidden behin
 Two thresholds that used to be fixed constants are now **calibrated**: the dedup τ is per-embedder
 (`embed.default_dedup_tau`), and the monitor's similarity flag is relative to a rolling window of
 recent generations' mean cosine (`baseline + margin`, with an absolute safety ceiling), falling back
-to the absolute threshold until the window has enough samples.
+to the absolute threshold until the window has enough samples. Crucially, once calibrated the window
+trains only on **healthy** generations — `_persist_cycle` excludes any generation the relative rule
+flags as too similar — so a sustained collapse can't drag the baseline up past itself and blind the
+monitor (a "boiling-frog" failure). While still bootstrapping (no calibrated baseline yet) every
+generation is admitted, so the window can form even under an embedder whose natural cosine scale
+trips the absolute fallback.
 
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of

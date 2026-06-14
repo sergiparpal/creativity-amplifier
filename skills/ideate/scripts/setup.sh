@@ -23,6 +23,9 @@ echo "[setup] Installing creativity_engine (editable, no extra deps)"
 "$VENV_DIR/bin/python" -m pip install -e "$SCRIPT_DIR" --no-deps
 
 echo "[setup] Verifying imports"
-"$VENV_DIR/bin/python" -c "import numpy, scipy, sklearn, yaml, creativity_engine; print('[setup] core imports OK')"
+# Only assert what the engine actually imports + declares in requirements.txt
+# (scipy comes in transitively via scikit-learn but the engine never imports it,
+# so verifying it here would assert an undeclared dependency).
+"$VENV_DIR/bin/python" -c "import numpy, sklearn, yaml, creativity_engine; print('[setup] core imports OK')"
 
 echo "[setup] Done. Engine: $VENV_DIR/bin/python -m creativity_engine"

@@ -207,6 +207,9 @@ def _elite_open_cells(
     texts: List[str] = []
     for nid, niche in arc.niches.items():
         rec = cand_store.get(niche.elite_id, {})
+        # Falls back descriptor-value -> idea text -> "". An empty mechanism embeds
+        # to a zero vector and lands in cell 0; such niches merge there on freeze.
+        # Harmless in practice (candidates always carry text), just deterministic.
         mech = str(rec.get("descriptor", {}).get(open_axis.name) or rec.get("text") or "")
         nids.append(nid)
         texts.append(mech)
@@ -415,7 +418,15 @@ def _persist_cycle(
     meta["embedding_dim"] = int(vecs.shape[1])
     meta["engine"] = econfig.to_dict()  # keep the resolved knobs visible/auditable
     # Roll the monitor's calibration window with this generation's mean cosine.
-    if int(mon.get("n", 0)) >= 2:
+    # The window must track the project's *normal* diversity scale, never the
+    # collapse it exists to detect. So once a calibrated baseline exists we exclude
+    # any generation the RELATIVE rule flags as too similar — otherwise a sustained
+    # collapse trains the baseline up past itself and the flag goes quiet (a
+    # "boiling-frog" blind spot). While still bootstrapping (no calibrated baseline
+    # yet) we add every generation regardless, so the window can form even under an
+    # embedder whose natural cosine scale trips the absolute fallback.
+    suppress = mon.get("calibrated") and mon.get("too_similar")
+    if int(mon.get("n", 0)) >= 2 and not suppress:
         cos_window = list(meta.get("cos_window", []))
         cos_window.append(float(mon["mean_cosine"]))
         meta["cos_window"] = cos_window[-econfig.monitor_window:]
@@ -531,7 +542,10 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     arc = archive_mod.Archive.from_dict(sess.spec, sess.state.read_archive())
     stored_emb = sess.state.read_embeddings()
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
-    elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=1)
+    # dim only matters in the empty case (the resulting (0, dim) array is never
+    # used in arithmetic); take it from a stored vector when one exists.
+    dim = len(next(iter(stored_emb.values()))) if stored_emb else 1
+    elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=dim)
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
     return {
         "entropy": mon["entropy"],

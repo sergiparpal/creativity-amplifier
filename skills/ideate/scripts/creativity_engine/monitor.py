@@ -132,6 +132,12 @@ def evaluate(
 
     return {
         "collapsing": bool(too_similar or too_concentrated),
+        # ``too_similar`` is the similarity signal alone (vs. the combined flag),
+        # and ``calibrated`` says whether it used the relative rule or the absolute
+        # fallback. Callers use the pair to decide whether a generation may train
+        # the calibration baseline (only healthy, relatively-judged ones may).
+        "too_similar": bool(too_similar),
+        "calibrated": bool(calibrated),
         "mean_cosine": round(mean_cos, 4),
         "cos_limit": round(cos_limit, 4),
         "baseline_n": base_n,

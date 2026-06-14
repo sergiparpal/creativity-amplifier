@@ -348,67 +348,82 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         with tempfile.TemporaryDirectory(prefix="creativity-selftest-") as tmp:
             return run(project=project, live=live, seed=seed, home=Path(tmp))
 
-    # deterministic embedder unless a live run is explicitly requested
-    os.environ["CREATIVITY_EMBEDDER"] = "local" if live else "hash"
+    # Deterministic embedder unless a live run is explicitly requested. Save and
+    # restore $CREATIVITY_EMBEDDER so running the self-test never mutates the
+    # caller's global env (the test suite calls run() in-process); the cache is
+    # reset on both ends so neither the self-test nor the caller inherits a stale
+    # embedder built under the other's setting.
+    prev_embedder = os.environ.get(embed.ENV_VAR)
+    os.environ[embed.ENV_VAR] = "local" if live else "hash"
     embed.reset_cache()
+    try:
+        spec = config.load_generic_axes()
+        settings = config.load_session_settings(config.generic_axes_path())
+        axes = spec.to_dict()
+        embedder = embed.get_embedder()
 
-    spec = config.load_generic_axes()
-    settings = config.load_session_settings(config.generic_axes_path())
-    axes = spec.to_dict()
-    embedder = embed.get_embedder()
+        engine_metrics, state = _diverse_engine_metrics(
+            spec, settings, axes, seed, home, project
+        )
+        base_metrics = _single_shot_metrics(spec, settings, embedder, seed)
+        dpp_metrics, firstn_metrics = _dpp_isolation_metrics(
+            spec, settings, embedder, seed
+        )
 
-    engine_metrics, state = _diverse_engine_metrics(
-        spec, settings, axes, seed, home, project
-    )
-    base_metrics = _single_shot_metrics(spec, settings, embedder, seed)
-    dpp_metrics, firstn_metrics = _dpp_isolation_metrics(
-        spec, settings, embedder, seed
-    )
+        null_check = _null_check(spec, settings, embedder, seed)
 
-    null_check = _null_check(spec, settings, embedder, seed)
+        value_gate = {
+            "engine": engine_metrics,
+            "single_shot": base_metrics,
+            "dpp_on_pool": dpp_metrics,
+            "first_n_on_pool": firstn_metrics,
+            "null_check": null_check,
+            "checks": {
+                "mpd_beats_single_shot": engine_metrics["mean_pairwise_distance"]
+                > base_metrics["mean_pairwise_distance"] + MARGIN_MPD,
+                "vendi_beats_single_shot": engine_metrics["vendi"]
+                > base_metrics["vendi"] + MARGIN_VENDI,
+                "entropy_beats_single_shot": engine_metrics["niche_entropy"]
+                > base_metrics["niche_entropy"],
+                # averaged over shuffled seeds, so it isn't an artifact of pool order
+                "dpp_beats_first_n": dpp_metrics["mean_pairwise_distance_avg"]
+                > firstn_metrics["mean_pairwise_distance_avg"],
+                # DPP doesn't regress below random when there's nothing to gain
+                "null_no_regression": null_check["passed"],
+            },
+        }
+        value_gate["passed"] = all(value_gate["checks"].values())
 
-    value_gate = {
-        "engine": engine_metrics,
-        "single_shot": base_metrics,
-        "dpp_on_pool": dpp_metrics,
-        "first_n_on_pool": firstn_metrics,
-        "null_check": null_check,
-        "checks": {
-            "mpd_beats_single_shot": engine_metrics["mean_pairwise_distance"]
-            > base_metrics["mean_pairwise_distance"] + MARGIN_MPD,
-            "vendi_beats_single_shot": engine_metrics["vendi"]
-            > base_metrics["vendi"] + MARGIN_VENDI,
-            "entropy_beats_single_shot": engine_metrics["niche_entropy"]
-            > base_metrics["niche_entropy"],
-            # averaged over shuffled seeds, so it isn't an artifact of pool order
-            "dpp_beats_first_n": dpp_metrics["mean_pairwise_distance_avg"]
-            > firstn_metrics["mean_pairwise_distance_avg"],
-            # DPP doesn't regress below random when there's nothing to gain
-            "null_no_regression": null_check["passed"],
-        },
-    }
-    value_gate["passed"] = all(value_gate["checks"].values())
+        reversal = _collapse_reversal(spec, settings, axes, seed, home, project)
+        semantic = _live_semantic_check(live)
 
-    reversal = _collapse_reversal(spec, settings, axes, seed, home, project)
-    semantic = _live_semantic_check(live)
+        written = {
+            name: Path(p).exists()
+            for name, p in state.paths().items()
+            if name != "root"
+        }
+        files_ok = all(written.values())
+        # A skipped semantic check doesn't fail the gate; a ran-and-failed one does.
+        semantic_ok = (not semantic.get("ran")) or bool(semantic.get("passed"))
 
-    written = {
-        name: Path(p).exists() for name, p in state.paths().items() if name != "root"
-    }
-    files_ok = all(written.values())
-    # A skipped semantic check doesn't fail the gate; a ran-and-failed one does.
-    semantic_ok = (not semantic.get("ran")) or bool(semantic.get("passed"))
-
-    ok = bool(value_gate["passed"] and reversal["passed"] and files_ok and semantic_ok)
-    return {
-        "ok": ok,
-        "value_gate": value_gate,
-        "collapse_reversal": reversal,
-        "live_semantic": semantic,
-        "state_files_written": written,
-        "cycles": SELFTEST_CYCLES,
-        "embedder": "local" if live else "hash",
-    }
+        ok = bool(
+            value_gate["passed"] and reversal["passed"] and files_ok and semantic_ok
+        )
+        return {
+            "ok": ok,
+            "value_gate": value_gate,
+            "collapse_reversal": reversal,
+            "live_semantic": semantic,
+            "state_files_written": written,
+            "cycles": SELFTEST_CYCLES,
+            "embedder": "local" if live else "hash",
+        }
+    finally:
+        if prev_embedder is None:
+            os.environ.pop(embed.ENV_VAR, None)
+        else:
+            os.environ[embed.ENV_VAR] = prev_embedder
+        embed.reset_cache()
 
 
 def _stub_human(pipeline, project, result, home) -> None:

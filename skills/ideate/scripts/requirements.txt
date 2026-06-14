@@ -1,4 +1,4 @@
-numpy>=1.26            # all of the diversity math (DPP log-det, Vendi eigvalsh, novelty)
+numpy>=1.26            # all of the diversity math (DPP log-det, Vendi eigvalsh, novelty); numpy 2.x supported & tested
 scikit-learn>=1.4      # HashingVectorizer for the deterministic 'hash' embedder
 pyyaml>=6              # domain/axes config
 sentence-transformers>=2.7   # default local (live) embedder (CPU)
