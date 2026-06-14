@@ -11,9 +11,12 @@ DPP diverse slate → anti-collapse monitor. The judge is never called here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+if TYPE_CHECKING:  # import for type hints only; avoids a runtime import cycle
+    from .state import State
 
 from . import (
     __version__,
@@ -211,7 +214,7 @@ def _elite_open_cells(
 
 
 def _accumulate_and_maybe_freeze(
-    state: "State",
+    state: State,
     on_state: Optional[Dict[str, Any]],
     open_axis: Optional[Any],
     open_vecs: np.ndarray,
@@ -388,7 +391,7 @@ def _select_slate(
 
 
 def _persist_cycle(
-    state: "State",
+    state: State,
     arc: "archive_mod.Archive",
     stored_emb: Dict[str, List[float]],
     cand_store: Dict[str, Any],
