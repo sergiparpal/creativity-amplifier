@@ -23,12 +23,15 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from . import config, diversity, embed, monitor
-from .archive import CVTNicher, compute_niche
+from .archive import compute_niche
 from .state import State
 
 # Margins the value gate must clear on the seeded fixture.
 MARGIN_MPD = 0.10
 MARGIN_VENDI = 0.5
+
+# Generations the diverse loop runs before its slate is measured.
+SELFTEST_CYCLES = 2
 
 _ANGLES = ["growth", "art", "community", "tech", "ritual", "play", "learning", "ecology"]
 _SCOPES = ["personal", "local", "regional", "global"]
@@ -141,18 +144,18 @@ def _slate_diversity(vecs: np.ndarray, niche_ids: List[str]) -> Dict[str, float]
 
 
 def _place(candidates, spec, embedder, seed):
-    """Embed + niche a raw candidate list (no DPP, no dedup)."""
+    """Embed + niche a raw candidate list (no DPP, no dedup).
+
+    Reuses the production placement (`pipeline.assign_open_cells`) so the
+    baseline is niched exactly like the engine niches its own candidates.
+    """
+    from . import pipeline  # local import avoids a load-time cycle (pipeline -> selftest)
+
     texts = [c["text"] for c in candidates]
+    descriptors = [c["descriptor"] for c in candidates]
     vecs = embedder.embed(texts)
-    open_axis = spec.primary_axis
+    open_axis, cells = pipeline.assign_open_cells(spec, descriptors, texts, embedder, seed)
     niche_ids = []
-    if open_axis is not None:
-        open_texts = [str(c["descriptor"].get(open_axis.name) or c["text"]) for c in candidates]
-        open_vecs = embedder.embed(open_texts)
-        nicher = CVTNicher(dim=open_vecs.shape[1], k=16, seed=seed)
-        cells = nicher.cells(open_vecs)
-    else:
-        cells = [None] * len(candidates)
     for c, cell in zip(candidates, cells):
         ocell = {open_axis.name: cell} if (open_axis and cell is not None) else {}
         nid, _ = compute_niche(c["descriptor"], spec, ocell)
@@ -163,55 +166,87 @@ def _place(candidates, spec, embedder, seed):
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
+def _diverse_engine_metrics(spec, axes, seed, home, project):
+    """Run the full engine loop with a stubbed human; return ``(metrics, state)``.
+
+    ``state`` is the diverse project's handle, reused later for the file checks.
+    """
+    from . import pipeline  # local import avoids a load-time cycle (pipeline -> selftest)
+
+    dproj = f"{project}-diverse"
+    pipeline.init_project(dproj, axes, seed=seed, home=home)
+    state = State(dproj, home=home)
+
+    last = None
+    for gen in range(SELFTEST_CYCLES):
+        cands = diverse_candidates(spec.candidates_per_generation, gen=gen)
+        last = pipeline.ingest(dproj, cands, axes, seed=seed, home=home)
+        _stub_human(pipeline, dproj, last, home)
+
+    slate = last["slate"] if last else []
+    emb_store = state.read_embeddings()
+    ids = [s["id"] for s in slate]
+    vecs = np.asarray([emb_store[i] for i in ids if i in emb_store], dtype=np.float32)
+    return _slate_diversity(vecs, [s["niche_id"] for s in slate]), state
+
+
+def _single_shot_metrics(spec, embedder, seed):
+    """Clichéd single-shot baseline: a clustered, low-diversity slate."""
+    cands = single_shot_candidates(spec.candidates_per_generation)
+    vecs, niches = _place(cands, spec, embedder, seed)
+    return _slate_diversity(vecs[: spec.slate_size], niches[: spec.slate_size])
+
+
+def _dpp_isolation_metrics(spec, embedder, seed):
+    """DPP vs first-N on one shared pool — isolates the engine's selection step."""
+    cands = dpp_isolation_candidates(spec.candidates_per_generation, spec.slate_size)
+    vecs, niches = _place(cands, spec, embedder, seed)
+    sel = diversity.select_diverse(vecs, k=spec.slate_size, seed=seed)
+    dpp = _slate_diversity(vecs[sel], [niches[i] for i in sel])
+    first_n = _slate_diversity(vecs[: spec.slate_size], niches[: spec.slate_size])
+    return dpp, first_n
+
+
+def _collapse_reversal(spec, axes, seed, home, project):
+    """A samey generation must trip the monitor; the next diverse one recovers."""
+    from . import pipeline  # local import avoids a load-time cycle (pipeline -> selftest)
+
+    cproj = f"{project}-collapse"
+    pipeline.init_project(cproj, axes, seed=seed, home=home)
+    collapsed = pipeline.ingest(
+        cproj, collapsing_candidates(8), axes, seed=seed, home=home
+    )
+    recovered = pipeline.ingest(
+        cproj, diverse_candidates(spec.candidates_per_generation, gen=5, prefix="rec"),
+        axes, seed=seed, home=home,
+    )
+    col_mon, rec_mon = collapsed["monitor"], recovered["monitor"]
+    checks = {
+        "collapse_detected": bool(col_mon["collapsing"]),
+        "recovered_quiet": not rec_mon["collapsing"],
+        "diversity_recovered": rec_mon["mean_cosine"] < col_mon["mean_cosine"],
+    }
+    return {
+        "collapsed_monitor": col_mon,
+        "recovered_monitor": rec_mon,
+        "checks": checks,
+        "passed": all(checks.values()),
+    }
+
+
 def run(project: str = "selftest", live: bool = False, seed: int = 0,
         home: Optional[Path] = None) -> Dict[str, Any]:
     # deterministic embedder unless a live run is explicitly requested
     os.environ["CREATIVITY_EMBEDDER"] = "local" if live else "hash"
     embed.reset_cache()
 
-    from . import pipeline  # local import to avoid a cycle at module load
-
     spec = config.load_generic_axes()
     axes = spec.to_dict()
     embedder = embed.get_embedder()
 
-    # ----- diverse loop with stubbed human ------------------------------- #
-    dproj = f"{project}-diverse"
-    pipeline.init_project(dproj, axes, seed=seed, home=home)
-    state = State(dproj, home=home)
-
-    last = None
-    cycles = 2
-    for gen in range(cycles):
-        cands = diverse_candidates(spec.candidates_per_generation, gen=gen)
-        last = pipeline.ingest(dproj, cands, axes, seed=seed, home=home)
-        _stub_human(pipeline, dproj, last, home)
-
-    engine_slate = last["slate"] if last else []
-    emb_store = state.read_embeddings()
-    eng_ids = [s["id"] for s in engine_slate]
-    eng_vecs = np.asarray([emb_store[i] for i in eng_ids if i in emb_store], dtype=np.float32)
-    eng_niches = [s["niche_id"] for s in engine_slate]
-    engine_metrics = _slate_diversity(eng_vecs, eng_niches)
-
-    # ----- single-shot baseline ------------------------------------------ #
-    base_cands = single_shot_candidates(spec.candidates_per_generation)
-    base_vecs, base_niches = _place(base_cands, spec, embedder, seed)
-    base_slate = base_vecs[: spec.slate_size]
-    base_metrics = _slate_diversity(base_slate, base_niches[: spec.slate_size])
-
-    # ----- DPP-vs-first-N on the SAME pool (isolates the engine's selection) #
-    pool_cands = dpp_isolation_candidates(
-        spec.candidates_per_generation, spec.slate_size
-    )
-    pool_vecs, pool_niches = _place(pool_cands, spec, embedder, seed)
-    sel = diversity.select_diverse(pool_vecs, k=spec.slate_size, seed=seed)
-    dpp_metrics = _slate_diversity(
-        pool_vecs[sel], [pool_niches[i] for i in sel]
-    )
-    firstn_metrics = _slate_diversity(
-        pool_vecs[: spec.slate_size], pool_niches[: spec.slate_size]
-    )
+    engine_metrics, state = _diverse_engine_metrics(spec, axes, seed, home, project)
+    base_metrics = _single_shot_metrics(spec, embedder, seed)
+    dpp_metrics, firstn_metrics = _dpp_isolation_metrics(spec, embedder, seed)
 
     value_gate = {
         "engine": engine_metrics,
@@ -231,29 +266,8 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
     }
     value_gate["passed"] = all(value_gate["checks"].values())
 
-    # ----- induced-collapse reversal ------------------------------------- #
-    cproj = f"{project}-collapse"
-    pipeline.init_project(cproj, axes, seed=seed, home=home)
-    collapsed = pipeline.ingest(
-        cproj, collapsing_candidates(8), axes, seed=seed, home=home
-    )
-    recovered = pipeline.ingest(
-        cproj, diverse_candidates(spec.candidates_per_generation, gen=5, prefix="rec"),
-        axes, seed=seed, home=home,
-    )
-    col_mon, rec_mon = collapsed["monitor"], recovered["monitor"]
-    reversal = {
-        "collapsed_monitor": col_mon,
-        "recovered_monitor": rec_mon,
-        "checks": {
-            "collapse_detected": bool(col_mon["collapsing"]),
-            "recovered_quiet": not rec_mon["collapsing"],
-            "diversity_recovered": rec_mon["mean_cosine"] < col_mon["mean_cosine"],
-        },
-    }
-    reversal["passed"] = all(reversal["checks"].values())
+    reversal = _collapse_reversal(spec, axes, seed, home, project)
 
-    # ----- state files written ------------------------------------------- #
     written = {
         name: Path(p).exists() for name, p in state.paths().items() if name != "root"
     }
@@ -265,7 +279,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         "value_gate": value_gate,
         "collapse_reversal": reversal,
         "state_files_written": written,
-        "cycles": cycles,
+        "cycles": SELFTEST_CYCLES,
         "embedder": "local" if live else "hash",
     }
 

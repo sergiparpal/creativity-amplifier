@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 
+# Cosine distance (1 - cos) maxes out at 2.0 for antipodal vectors; novelty is
+# clipped to this so a degenerate distance can't blow past the natural ceiling.
+MAX_COSINE_DISTANCE = 2.0
+
 
 def cosine_distance_matrix(vecs: np.ndarray, reference: np.ndarray) -> np.ndarray:
     """``(n, m)`` cosine distances (``1 - cos``) between rows of the two sets.
@@ -19,6 +23,22 @@ def cosine_distance_matrix(vecs: np.ndarray, reference: np.ndarray) -> np.ndarra
     reference = np.asarray(reference, dtype=np.float32)
     sims = vecs @ reference.T
     return 1.0 - sims
+
+
+def mean_knn_distance(dist: np.ndarray, k: int, n_neighbors: int) -> np.ndarray:
+    """Mean of the ``k`` smallest distances per row of a ``(n, m)`` matrix.
+
+    The shared kernel behind both :func:`knn_novelty` and the pipeline's
+    survivor-novelty pass. Callers mask any row's own neighbour to ``inf`` before
+    calling and pass ``n_neighbors`` = the count of valid (non-masked) columns.
+    Returns 1.0 (maximally novel) per row when there are no neighbours.
+    """
+    n = dist.shape[0]
+    if n_neighbors <= 0:
+        return np.ones((n,), dtype=np.float32)
+    kk = min(k, n_neighbors)
+    part = np.partition(dist, kk - 1, axis=1)[:, :kk]
+    return np.clip(part.mean(axis=1), 0.0, MAX_COSINE_DISTANCE).astype(np.float32)
 
 
 def knn_novelty(
@@ -50,12 +70,4 @@ def knn_novelty(
         m_eff = m - 1
     else:
         m_eff = m
-    if m_eff <= 0:
-        return np.ones((n,), dtype=np.float32)
-
-    kk = min(k, m_eff)
-    # k smallest distances per row.
-    part = np.partition(dist, kk - 1, axis=1)[:, :kk]
-    out = part.mean(axis=1)
-    out = np.clip(out, 0.0, 2.0)
-    return out.astype(np.float32)
+    return mean_knn_distance(dist, k, n_neighbors=m_eff)

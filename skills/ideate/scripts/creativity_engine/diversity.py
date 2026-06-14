@@ -12,7 +12,8 @@ prove the diverse slate beats a non-diverse baseline.
 
 from __future__ import annotations
 
-from typing import List, Optional
+import os
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -49,6 +50,14 @@ def greedy_map_dpp(kernel: np.ndarray, k: int, epsilon: float = 1e-10) -> List[i
 
     Returns up to ``k`` item indices, greedily maximizing the marginal gain in
     log-determinant.
+
+    Variable names follow the paper's notation (kept terse so the algorithm
+    lines up with it):
+
+    * ``di2s``   — d_i², the squared marginal gain of adding each item next.
+    * ``cis``    — the incremental Cholesky factors built row by row.
+    * ``di_opt`` / ``ci_opt`` — the chosen item's d and its Cholesky column.
+    * ``eis``    — the new Cholesky row contributed by the chosen item.
     """
     kernel = np.asarray(kernel, dtype=np.float64)
     n = kernel.shape[0]
@@ -77,18 +86,33 @@ def greedy_map_dpp(kernel: np.ndarray, k: int, epsilon: float = 1e-10) -> List[i
 
 
 def farthest_point_sampling(
-    vecs: np.ndarray, k: int, start: int = 0
+    vecs: np.ndarray,
+    k: int,
+    start: int = 0,
+    seeds: Optional[Sequence[int]] = None,
 ) -> List[int]:
-    """Max-min cosine-distance greedy selection (DPP fallback)."""
+    """Max-min cosine-distance greedy selection (also the DPP fallback).
+
+    Returns up to ``k`` indices into ``vecs`` that are mutually far apart, each
+    chosen to maximize its minimum cosine distance to everything picked so far.
+
+    ``seeds`` pre-selects indices (kept, order preserved) and seeds the frontier
+    — use it to extend an existing selection. When ``seeds`` is None the walk
+    starts from ``start``. The returned list always begins with the seeds.
+    """
     vecs = np.asarray(vecs, dtype=np.float64)
     n = vecs.shape[0]
     k = min(k, n)
     if k <= 0:
         return []
-    sims = vecs @ vecs.T
-    dist = 1.0 - sims
-    selected = [int(start)]
-    min_d = dist[start].copy()
+    dist = 1.0 - vecs @ vecs.T
+    if seeds:
+        selected = [int(s) for s in seeds]
+        # min cosine distance from each row to its nearest already-selected seed
+        min_d = dist[:, selected].min(axis=1)
+    else:
+        selected = [int(start)]
+        min_d = dist[start].copy()
     while len(selected) < k:
         min_d[selected] = -np.inf
         j = int(np.argmax(min_d))
@@ -123,22 +147,39 @@ def select_diverse(
             if len(sel) >= k:
                 break
         return sel[:k]
-    except Exception:
+    except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+        # Expected ways the kernel can degenerate (singular/ill-conditioned,
+        # ragged input). Fall back to farthest-point, but re-raise under
+        # CREATIVITY_DEBUG so a genuine bug isn't masked by the fallback.
+        if os.environ.get("CREATIVITY_DEBUG"):
+            raise
         return farthest_point_sampling(vecs, k)
 
 
 # --------------------------------------------------------------------------- #
 # Metrics
 # --------------------------------------------------------------------------- #
-def mean_pairwise_distance(vecs: np.ndarray) -> float:
-    """Average cosine distance over all unordered pairs (higher == more diverse)."""
+def pairwise_cosine_sims(vecs: np.ndarray) -> np.ndarray:
+    """Flat array of cosine similarities over all unordered pairs ``(i < j)``.
+
+    Empty when there are fewer than two rows. Assumes L2-normalized rows, so a
+    dot product is the cosine. Shared by ``mean_pairwise_distance`` here and the
+    monitor's ``mean_pairwise_cosine`` so the two can never drift apart.
+    """
     vecs = np.asarray(vecs, dtype=np.float64)
     n = vecs.shape[0]
     if n < 2:
-        return 0.0
+        return np.zeros((0,), dtype=np.float64)
     sims = vecs @ vecs.T
-    iu = np.triu_indices(n, k=1)
-    return float(np.mean(1.0 - sims[iu]))
+    return sims[np.triu_indices(n, k=1)]
+
+
+def mean_pairwise_distance(vecs: np.ndarray) -> float:
+    """Average cosine distance over all unordered pairs (higher == more diverse)."""
+    pairs = pairwise_cosine_sims(vecs)
+    if pairs.size == 0:
+        return 0.0
+    return float(np.mean(1.0 - pairs))
 
 
 def vendi_score(vecs: np.ndarray) -> float:

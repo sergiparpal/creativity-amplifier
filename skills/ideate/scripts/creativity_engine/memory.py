@@ -175,6 +175,8 @@ def select_parents(
     (in cosine distance) from everything chosen so far, until ``k`` is reached.
     Pins are never dropped, even if there are more pins than ``k``.
     """
+    from .diversity import farthest_point_sampling
+
     # pins first, de-duplicated, order preserved — never dropped
     selected: List[str] = []
     for p in pins:
@@ -182,30 +184,28 @@ def select_parents(
             selected.append(p)
 
     pool = [e for e in elite_ids if e not in selected and e in emb_by_id]
-    if not pool:
+    remaining = max(0, k - len(selected))
+    if not pool or remaining == 0:
         return selected
 
-    sel_vecs = [np.asarray(emb_by_id[s]) for s in selected if s in emb_by_id]
     pool_vecs = np.asarray([emb_by_id[e] for e in pool], dtype=np.float64)
+    seed_vecs = [
+        np.asarray(emb_by_id[s], dtype=np.float64) for s in selected if s in emb_by_id
+    ]
 
-    if not sel_vecs:
-        # no usable seed (e.g. pins lack embeddings): farthest-point fill the rest
-        from .diversity import farthest_point_sampling
-
-        remaining = max(0, k - len(selected))
+    if not seed_vecs:
+        # no usable seed (e.g. pins lack embeddings): plain farthest-point fill
         idx = farthest_point_sampling(pool_vecs, remaining)
         return selected + [pool[i] for i in idx]
 
-    # Farthest-point greedy with an incrementally maintained nearest-selected
-    # distance (no full recompute / re-vstack per pick). `alive` masks picks.
-    sel_mat = np.vstack([np.asarray(v, dtype=np.float64) for v in sel_vecs])
-    min_dist = 1.0 - (pool_vecs @ sel_mat.T).max(axis=1)  # nearest selected -> small
-    alive = np.ones(len(pool), dtype=bool)
-    while len(selected) < k and alive.any():
-        pick = int(np.argmax(np.where(alive, min_dist, -np.inf)))  # farthest from set
-        selected.append(pool[pick])
-        alive[pick] = False
-        # fold the newly chosen vector into the running nearest-selected distance
-        min_dist = np.minimum(min_dist, 1.0 - pool_vecs @ pool_vecs[pick])
-
+    # Seed the farthest-point frontier with the already-chosen vectors, then pick
+    # the `remaining` pool items farthest from everything selected so far. We
+    # stack [seeds; pool] so the seeds are plain indices into one matrix; picks
+    # come back seeds-first, so we keep only the pool half (index >= n_seeds).
+    n_seeds = len(seed_vecs)
+    combined = np.vstack([np.asarray(seed_vecs, dtype=np.float64), pool_vecs])
+    picks = farthest_point_sampling(
+        combined, k=n_seeds + remaining, seeds=range(n_seeds)
+    )
+    selected += [pool[i - n_seeds] for i in picks if i >= n_seeds]
     return selected

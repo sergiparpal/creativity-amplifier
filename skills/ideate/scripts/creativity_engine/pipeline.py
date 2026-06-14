@@ -15,7 +15,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from . import __version__, archive as archive_mod, config, diversity, monitor, novelty
+from . import (
+    __version__,
+    archive as archive_mod,
+    config,
+    diversity,
+    memory,
+    monitor,
+    novelty,
+)
 from .config import AxesSpec, Candidate
 from .embed import dedupe, get_embedder
 from .state import State
@@ -77,8 +85,6 @@ def _load_spec(state: State, fallback: Optional[AxesSpec] = None) -> AxesSpec:
 # --------------------------------------------------------------------------- #
 def recall(project: str, k: int = 10, home: Optional[Path] = None) -> Dict[str, Any]:
     """Return memory for in-context injection: recent choices, pins, win tallies."""
-    from . import memory
-
     state = State(project, home=home)
     domain = _resolve_domain(state)
     return memory.recall(state, domain, k=k)
@@ -109,14 +115,10 @@ def _survivor_novelty(
         ref = surv_vecs
         offset = 0
     dist = novelty.cosine_distance_matrix(surv_vecs, ref)
-    for i in range(n):
-        dist[i, offset + i] = np.inf
-    m_eff = ref.shape[0] - 1
-    if m_eff <= 0:
-        return np.ones((n,), dtype=np.float32)
-    kk = min(k, m_eff)
-    part = np.partition(dist, kk - 1, axis=1)[:, :kk]
-    return np.clip(part.mean(axis=1), 0.0, 2.0).astype(np.float32)
+    # Mask each survivor's own row in the combined reference so it isn't its own
+    # neighbour, then reuse the shared mean-k-NN kernel.
+    dist[np.arange(n), offset + np.arange(n)] = np.inf
+    return novelty.mean_knn_distance(dist, k, n_neighbors=ref.shape[0] - 1)
 
 
 def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -129,8 +131,153 @@ def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
         "coords": record.get("coords", {}),
         "novelty": round(float(record.get("novelty", 0.0)), 4),
         "fitness": round(float(record.get("fitness", 1.0)), 4),
+        # The agent looks an embedding up by candidate id, so the ref IS the id;
+        # kept as a distinct field so the contract survives if that ever changes.
         "embedding_ref": record["id"],
     }
+
+
+def assign_open_cells(
+    spec: AxesSpec,
+    descriptors: List[Dict[str, Any]],
+    texts: List[str],
+    embedder,
+    seed: int,
+) -> Tuple[Optional[Any], List[Optional[int]]]:
+    """CVT (Voronoi) cell per item for the primary "open" axis.
+
+    Returns ``(open_axis, cells)`` where ``cells[i]`` is the item's cell index
+    (or ``None`` when there is no open axis). Shared by :func:`ingest` and the
+    self-test so both place candidates through identical logic.
+    """
+    open_axis = spec.primary_axis
+    n = len(texts)
+    if open_axis is None or n == 0:
+        return open_axis, [None] * n
+    open_texts = [
+        str(d.get(open_axis.name) or t) for d, t in zip(descriptors, texts)
+    ]
+    open_vecs = embedder.embed(open_texts)
+    nicher = archive_mod.CVTNicher(dim=open_vecs.shape[1], k=OPEN_NICHES, seed=seed)
+    return open_axis, nicher.cells(open_vecs)
+
+
+def _empty_cycle(arc: "archive_mod.Archive") -> Dict[str, Any]:
+    """Result dict for a generation with no candidates to ingest."""
+    return {
+        "slate": [],
+        "ask_pairs": [],
+        "monitor": monitor.evaluate(np.zeros((0, 1)), arc.niche_counts()),
+        "parents": [],
+    }
+
+
+def _guard_embedding_dim(
+    stored_emb: Dict[str, List[float]], vecs: np.ndarray, embedder, project: str
+) -> None:
+    """Fail loudly if a prior embedder wrote incompatible-dimension vectors.
+
+    Mixing dimensions within a project would give dedup/novelty ragged arrays.
+    """
+    if not stored_emb:
+        return
+    existing_dim = len(next(iter(stored_emb.values())))
+    if existing_dim != vecs.shape[1]:
+        raise config.ConfigError(
+            f"project {project!r} has {existing_dim}-dim embeddings but the "
+            f"current embedder ({embedder.name!r}) produces {vecs.shape[1]}-dim "
+            f"vectors; reuse the original embedder ($CREATIVITY_EMBEDDER) or "
+            f"start a fresh project."
+        )
+
+
+def _stack_embeddings(
+    ids: List[str], stored_emb: Dict[str, List[float]], dim: int
+) -> np.ndarray:
+    """``(len(ids), dim)`` float32 matrix of the given ids' vectors (empty if none)."""
+    if ids:
+        return np.asarray([stored_emb[i] for i in ids], dtype=np.float32)
+    return np.zeros((0, dim), dtype=np.float32)
+
+
+def _place_survivors(
+    survivors: List[Candidate],
+    surv_vecs: np.ndarray,
+    cells: List[Optional[int]],
+    novelties: np.ndarray,
+    open_axis: Optional[Any],
+    spec: AxesSpec,
+    arc: "archive_mod.Archive",
+    cand_store: Dict[str, Any],
+    stored_emb: Dict[str, List[float]],
+) -> None:
+    """Insert each survivor into its niche; record its candidate + embedding."""
+    for idx, c in enumerate(survivors):
+        ocell = {}
+        if open_axis is not None and cells[idx] is not None:
+            ocell = {open_axis.name: cells[idx]}
+        nid, coords = archive_mod.compute_niche(c.descriptor, spec, ocell)
+        nov = float(novelties[idx])
+        arc.place(c.id, nid, coords, fitness=c.fitness, novelty=nov)
+        cand_store[c.id] = {
+            **c.to_dict(),
+            "niche_id": nid,
+            "coords": coords,
+            "novelty": nov,
+        }
+        stored_emb[c.id] = [float(x) for x in surv_vecs[idx]]
+
+
+def _select_slate(
+    arc: "archive_mod.Archive",
+    stored_emb: Dict[str, List[float]],
+    cand_store: Dict[str, Any],
+    spec: AxesSpec,
+    seed: int,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """DPP diverse slate over the current niche elites. Returns ``(slate, ids)``."""
+    elites: List[Tuple[str, float, str]] = [
+        (niche.elite_id, niche.fitness, nid)
+        for nid, niche in arc.niches.items()
+        if niche.elite_id and niche.elite_id in stored_emb
+    ]
+    # cap the pool by novelty for latency
+    if len(elites) > MAX_DPP_POOL:
+        elites.sort(
+            key=lambda e: cand_store.get(e[0], {}).get("novelty", 0.0), reverse=True
+        )
+        elites = elites[:MAX_DPP_POOL]
+    if not elites:
+        return [], []
+
+    elite_ids = [e[0] for e in elites]
+    elite_vecs = np.asarray([stored_emb[i] for i in elite_ids], dtype=np.float32)
+    quality = np.asarray([e[1] for e in elites], dtype=np.float64)
+    sel = diversity.select_diverse(
+        elite_vecs, k=spec.slate_size, quality=quality, seed=seed
+    )
+    slate_ids = [elite_ids[i] for i in sel]
+    slate = [_slate_item(cand_store[i]) for i in slate_ids]
+    return slate, slate_ids
+
+
+def _persist_cycle(
+    state: State,
+    arc: "archive_mod.Archive",
+    stored_emb: Dict[str, List[float]],
+    cand_store: Dict[str, Any],
+    vecs: np.ndarray,
+    embedder,
+) -> None:
+    """Write archive/embeddings/candidates and bump the cycle metadata."""
+    state.write_archive(arc.to_dict())
+    state.write_embeddings(stored_emb)
+    state.write_candidates(cand_store)
+    meta = state.read_meta()
+    meta["cycles"] = int(meta.get("cycles", 0)) + 1
+    meta["embedder"] = embedder.name
+    meta["embedding_dim"] = int(vecs.shape[1])
+    state.write_meta(meta)
 
 
 def ingest(
@@ -148,40 +295,19 @@ def ingest(
 
     cand_list = _parse_candidates(candidates)
     arc = archive_mod.Archive.from_dict(spec, state.read_archive())
+    if not cand_list:
+        return _empty_cycle(arc)
+
     stored_emb: Dict[str, List[float]] = state.read_embeddings()
     cand_store: Dict[str, Any] = state.read_candidates()
 
-    if not cand_list:
-        return {
-            "slate": [],
-            "ask_pairs": [],
-            "monitor": monitor.evaluate(np.zeros((0, 1)), arc.niche_counts()),
-            "parents": [],
-        }
-
     embedder = get_embedder()
     vecs = embedder.embed([c.text for c in cand_list])
+    _guard_embedding_dim(stored_emb, vecs, embedder, project)
 
-    # Guard: embeddings already persisted by a different embedder/dimension are
-    # incompatible (dedup/novelty would hit ragged arrays). Fail loudly instead.
-    if stored_emb:
-        existing_dim = len(next(iter(stored_emb.values())))
-        if existing_dim != vecs.shape[1]:
-            raise config.ConfigError(
-                f"project {project!r} has {existing_dim}-dim embeddings but the "
-                f"current embedder ({embedder.name!r}) produces {vecs.shape[1]}-dim "
-                f"vectors; reuse the original embedder ($CREATIVITY_EMBEDDER) or "
-                f"start a fresh project."
-            )
-
-    # existing embeddings (archive elites) for dedup + novelty reference
+    # Existing archive elites seed both dedup and the novelty reference.
     existing_ids = [eid for eid in arc.elite_ids() if eid in stored_emb]
-    if existing_ids:
-        existing_vecs = np.asarray(
-            [stored_emb[i] for i in existing_ids], dtype=np.float32
-        )
-    else:
-        existing_vecs = np.zeros((0, vecs.shape[1]), dtype=np.float32)
+    existing_vecs = _stack_embeddings(existing_ids, stored_emb, vecs.shape[1])
 
     keep, _drop = dedupe(
         vecs, tau=DEDUP_TAU, existing=existing_vecs if existing_vecs.shape[0] else None
@@ -189,66 +315,21 @@ def ingest(
     survivors = [cand_list[i] for i in keep]
     surv_vecs = vecs[keep] if keep else np.zeros((0, vecs.shape[1]), dtype=np.float32)
 
-    # open-axis CVT cells
-    open_axis = spec.primary_axis
-    cells: List[Optional[int]] = [None] * len(survivors)
-    if open_axis is not None and survivors:
-        open_texts = [
-            str(c.descriptor.get(open_axis.name) or c.text) for c in survivors
-        ]
-        open_vecs = embedder.embed(open_texts)
-        nicher = archive_mod.CVTNicher(
-            dim=open_vecs.shape[1], k=OPEN_NICHES, seed=seed
-        )
-        cells = nicher.cells(open_vecs)  # type: ignore[assignment]
-
+    open_axis, cells = assign_open_cells(
+        spec, [c.descriptor for c in survivors], [c.text for c in survivors],
+        embedder, seed,
+    )
     novelties = _survivor_novelty(surv_vecs, existing_vecs, KNN_K)
+    _place_survivors(
+        survivors, surv_vecs, cells, novelties, open_axis,
+        spec, arc, cand_store, stored_emb,
+    )
 
-    # place survivors
-    for idx, c in enumerate(survivors):
-        ocell = {}
-        if open_axis is not None and cells[idx] is not None:
-            ocell = {open_axis.name: cells[idx]}
-        nid, coords = archive_mod.compute_niche(c.descriptor, spec, ocell)
-        nov = float(novelties[idx])
-        arc.place(c.id, nid, coords, fitness=c.fitness, novelty=nov)
-        cand_store[c.id] = {
-            **c.to_dict(),
-            "niche_id": nid,
-            "coords": coords,
-            "novelty": nov,
-        }
-        stored_emb[c.id] = [float(x) for x in surv_vecs[idx]]
-
-    # DPP diverse slate over current elites
-    elites: List[Tuple[str, float, str]] = []  # (id, fitness, niche)
-    for nid, nf in arc.niches.items():
-        if nf.elite_id and nf.elite_id in stored_emb:
-            elites.append((nf.elite_id, nf.fitness, nid))
-    # cap the pool by novelty for latency
-    if len(elites) > MAX_DPP_POOL:
-        elites.sort(
-            key=lambda e: cand_store.get(e[0], {}).get("novelty", 0.0), reverse=True
-        )
-        elites = elites[:MAX_DPP_POOL]
-
-    slate_ids: List[str] = []
-    slate: List[Dict[str, Any]] = []
-    if elites:
-        elite_ids = [e[0] for e in elites]
-        elite_vecs = np.asarray([stored_emb[i] for i in elite_ids], dtype=np.float32)
-        quality = np.asarray([e[1] for e in elites], dtype=np.float64)
-        sel = diversity.select_diverse(
-            elite_vecs, k=spec.slate_size, quality=quality, seed=seed
-        )
-        slate_ids = [elite_ids[i] for i in sel]
-        slate = [_slate_item(cand_store[i]) for i in slate_ids]
+    slate, slate_ids = _select_slate(arc, stored_emb, cand_store, spec, seed)
 
     # Monitor the RAW generation (pre-dedup) so a near-duplicate batch still
     # registers as collapsing — dedup would otherwise hide it behind survivors.
     mon = monitor.evaluate(vecs, arc.niche_counts())
-
-    from . import memory
 
     # Namespace preference memory by the persisted snapshot domain so ingest is
     # consistent with remember/recall/parents (which all resolve from state).
@@ -256,16 +337,7 @@ def ingest(
     comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
-    # persist
-    state.write_archive(arc.to_dict())
-    state.write_embeddings(stored_emb)
-    state.write_candidates(cand_store)
-    meta = state.read_meta()
-    meta["cycles"] = int(meta.get("cycles", 0)) + 1
-    meta["embedder"] = embedder.name
-    meta["embedding_dim"] = int(vecs.shape[1])
-    state.write_meta(meta)
-
+    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder)
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,
@@ -284,10 +356,7 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     arc = archive_mod.Archive.from_dict(spec, state.read_archive())
     stored_emb = state.read_embeddings()
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
-    if elite_ids:
-        elite_vecs = np.asarray([stored_emb[i] for i in elite_ids], dtype=np.float32)
-    else:
-        elite_vecs = np.zeros((0, 1), dtype=np.float32)
+    elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=1)
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
     return {
         "entropy": mon["entropy"],
@@ -303,8 +372,6 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
 def remember(project: str, event: Dict[str, Any],
              home: Optional[Path] = None) -> Dict[str, Any]:
     """Append a comparison/pin to this domain's preference memory."""
-    from . import memory
-
     state = State(project, home=home).ensure()
     domain = _resolve_domain(state)
     return memory.remember(state, domain, event)
@@ -313,14 +380,14 @@ def remember(project: str, event: Dict[str, Any],
 def parents(project: str, k: int = 4, seed: int = 0,
             home: Optional[Path] = None) -> Dict[str, Any]:
     """Diverse parents for the next generation; pinned stepping stones kept."""
-    from . import memory
-
     state = State(project, home=home)
     spec = _load_spec(state, fallback=config.load_generic_axes())
     arc = archive_mod.Archive.from_dict(spec, state.read_archive())
     stored_emb = state.read_embeddings()
     cand_store = state.read_candidates()
-    pins = state.read_pins(spec.domain)
+    # Resolve the memory namespace the same way recall/ingest/remember do, so
+    # pins are read from the namespace they were written to.
+    pins = state.read_pins(_resolve_domain(state))
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
     chosen = memory.select_parents(elite_ids, stored_emb, pins, k)
     records = []

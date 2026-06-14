@@ -23,11 +23,12 @@ import numpy as np
 
 from .config import Axis, AxesSpec, Niche
 
-_SAFE = re.compile(r"[^a-z0-9]+")
+# Niche-key slug: lowercase alnum-only, for stable categorical bucket labels.
+_NICHE_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
-def _slug(value: Any) -> str:
-    s = _SAFE.sub("-", str(value).strip().lower()).strip("-")
+def _niche_slug(value: Any) -> str:
+    s = _NICHE_SLUG_RE.sub("-", str(value).strip().lower()).strip("-")
     return s or "none"
 
 
@@ -77,7 +78,7 @@ def continuous_bin(axis: Axis, value: Any) -> int:
 def axis_bucket(axis: Axis, value: Any, open_cell: Optional[int] = None) -> str:
     """Bucket label for one axis (used both for the niche key and display)."""
     if axis.type == "categorical":
-        return _slug(value if value is not None else "none")
+        return _niche_slug(value if value is not None else "none")
     if axis.type == "continuous":
         return f"b{continuous_bin(axis, value)}"
     # open

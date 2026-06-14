@@ -31,12 +31,12 @@ from typing import Any, Dict, List, Optional
 DEFAULT_HOME_ENV = "CREATIVITY_AMPLIFIER_HOME"
 _DEFAULT_BASE = "~/.creativity-amplifier"
 
-_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+_PATH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _slug(name: str, fallback: str = "default") -> str:
+def _path_slug(name: str, fallback: str = "default") -> str:
     """Filesystem-safe slug for a project or domain id."""
-    s = _SAFE.sub("-", str(name).strip()).strip("-_.")
+    s = _PATH_SLUG_RE.sub("-", str(name).strip()).strip("-_.")
     return s or fallback
 
 
@@ -64,7 +64,7 @@ class State:
     def __init__(self, project: str, home: Optional[Path] = None):
         self.project = project
         self.base = Path(home).expanduser() if home else base_dir()
-        self.root = self.base / _slug(project)
+        self.root = self.base / _path_slug(project)
 
     # -- paths -------------------------------------------------------------- #
     @property
@@ -88,7 +88,7 @@ class State:
         return self.root / "embeddings.json"
 
     def memory_dir(self, domain: str) -> Path:
-        return self.root / "memory" / _slug(domain)
+        return self.root / "memory" / _path_slug(domain)
 
     def comparisons_path(self, domain: str) -> Path:
         return self.memory_dir(domain) / "comparisons.jsonl"

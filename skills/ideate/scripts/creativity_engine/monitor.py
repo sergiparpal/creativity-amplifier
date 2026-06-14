@@ -17,6 +17,8 @@ from typing import Dict, List, Sequence
 
 import numpy as np
 
+from .diversity import pairwise_cosine_sims
+
 # Defaults chosen so a near-duplicate stream trips the flag and a diverse one
 # does not. Tunable per call.
 DEFAULT_COS_THRESHOLD = 0.55
@@ -43,13 +45,10 @@ def normalized_entropy(counts: Sequence[float]) -> float:
 
 def mean_pairwise_cosine(vecs: np.ndarray) -> float:
     """Average cosine similarity over all unordered pairs."""
-    vecs = np.asarray(vecs, dtype=np.float64)
-    n = vecs.shape[0]
-    if n < 2:
+    pairs = pairwise_cosine_sims(vecs)
+    if pairs.size == 0:
         return 0.0
-    sims = vecs @ vecs.T
-    iu = np.triu_indices(n, k=1)
-    return float(np.mean(sims[iu]))
+    return float(np.mean(pairs))
 
 
 def evaluate(
