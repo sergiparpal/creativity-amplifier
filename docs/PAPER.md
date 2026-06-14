@@ -277,6 +277,7 @@ State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), 
 | `OPEN_NICHES` | 24 | frozen Voronoi cells for the open axis |
 | `OPEN_NICHE_FREEZE_FACTOR` | 4 | freeze the open-axis partition once `4 × OPEN_NICHES` mechanisms accumulate |
 | `MAX_DPP_POOL` | 200 | cap on the elite *pool* for the DPP |
+| `NOVELTY_REF_CAP` | 500 | cap on the dedup/novelty reference (most-novel elites) — bounds the per-cycle O(n·m) cost |
 | `QUALITY_WEIGHT` | 0.3 | weight of the (bounded, [0.7–1.3]-clipped) judge fitness in the DPP slate |
 | `slate_size` | 6 | default slate size |
 | `candidates_per_generation` | 12 | candidates per generation |

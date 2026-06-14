@@ -41,6 +41,10 @@ MONITOR_WINDOW = 5
 OPEN_NICHES = 24
 OPEN_NICHE_FREEZE_FACTOR = 4
 MAX_DPP_POOL = 200
+# Cap on the dedup/novelty reference set (the most-novel elites). Dedup and k-NN
+# novelty run against the archive elites every cycle (O(n·m)); without a cap this
+# grows unbounded. Below the cap behavior is identical to using every elite.
+NOVELTY_REF_CAP = 500
 # How much the judge's (bounded) fitness is allowed to weight the DPP slate.
 # 0 -> pure diversity; 1 -> full quality-diversity. Kept low so geometry owns
 # the slate and the judge can only nudge ordering within an already-diverse pool.
@@ -289,6 +293,29 @@ def _guard_embedding_dim(
         )
 
 
+def _novelty_reference_ids(
+    arc: "archive_mod.Archive",
+    stored_emb: Dict[str, List[float]],
+    cap: Optional[int] = None,
+) -> List[str]:
+    """Elite ids used as the dedup/novelty reference, capped to the most-novel.
+
+    At or below ``cap`` this is exactly the embedded elites in archive order, so
+    small-project behavior is unchanged. Above ``cap`` it keeps the ``cap``
+    most-novel elites, bounding the O(n·m) dedup and k-NN novelty passes. ``cap``
+    defaults to the module-level :data:`NOVELTY_REF_CAP`, read at call time so it
+    stays overridable.
+    """
+    if cap is None:
+        cap = NOVELTY_REF_CAP
+    ids = [eid for eid in arc.elite_ids() if eid in stored_emb]
+    if len(ids) <= cap:
+        return ids
+    novelty_by_elite = {n.elite_id: n.novelty for n in arc.niches.values()}
+    ids.sort(key=lambda eid: novelty_by_elite.get(eid, 0.0), reverse=True)
+    return ids[:cap]
+
+
 def _stack_embeddings(
     ids: List[str], stored_emb: Dict[str, List[float]], dim: int
 ) -> np.ndarray:
@@ -414,8 +441,9 @@ def ingest(
     vecs = embedder.embed([c.text for c in cand_list])
     _guard_embedding_dim(stored_emb, vecs, embedder, project)
 
-    # Existing archive elites seed both dedup and the novelty reference.
-    existing_ids = [eid for eid in arc.elite_ids() if eid in stored_emb]
+    # Existing archive elites seed both dedup and the novelty reference, capped to
+    # the most-novel NOVELTY_REF_CAP so the per-cycle cost stays bounded.
+    existing_ids = _novelty_reference_ids(arc, stored_emb)
     existing_vecs = _stack_embeddings(existing_ids, stored_emb, vecs.shape[1])
 
     tau = default_dedup_tau(embedder.name)
