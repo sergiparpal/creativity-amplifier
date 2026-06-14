@@ -140,31 +140,31 @@ We report the `selftest` run with the deterministic hash embedder —a lexical, 
 
 | Metric | Engine (slate) | Single-shot | Reading |
 | :-- | --: | --: | :-- |
-| Mean pairwise distance | **0.667** | 0.122 | ↑ ≈ 5.4× |
-| Vendi score | **4.79** | 1.60 | ↑ ≈ 3.0× |
+| Mean pairwise distance | **0.664** | 0.122 | ↑ ≈ 5.4× |
+| Vendi score | **4.82** | 1.60 | ↑ ≈ 3.0× |
 | Niche entropy | **1.79** | 0.00 | from 1 to several niches |
 | Coverage (niches) | **6** | 1 | — |
 
-**Isolating selection — DPP vs first-N over the same *pool*:**
+**Isolating selection — DPP vs first-N over the same *pool*:** the pool is *shuffled* and the win is *averaged over several seeds*, so first-N is a random slice rather than the leading near-clones (a de-rigged, non-tautological comparison).
 
 | Metric | DPP | First-N | Reading |
 | :-- | --: | --: | :-- |
-| Mean pairwise distance | **0.719** | 0.165 | ↑ ≈ 4.4× |
-| Vendi score | **5.06** | 1.86 | ↑ ≈ 2.7× |
-| Coverage (niches) | **6** | 1 | — |
+| Mean pairwise distance (avg) | **0.731** | 0.642 | ↑ — DPP wins a genuinely random first-N |
+| Vendi score | **5.11** | 4.34 | ↑ |
+| Coverage (niches) | **6** | 5 | — |
 
-That DPP beats first-N over the *same set of candidates* is the result that matters: the gain comes not from generating better, but from **selecting** geometrically.
+That DPP beats first-N over the *same set of candidates* — even when first-N is a random draw, not the rigged leading clones — is the result that matters: the gain comes not from generating better, but from **selecting** geometrically. A companion *null check* confirms DPP does not regress below a random subset on an already-uniform pool.
 
-**Induced-collapse reversal:**
+**Induced-collapse reversal** (after warming the monitor's rolling baseline with two diverse generations, so the *calibrated relative* rule drives the decision):
 
 | State | `collapsing` | Mean cosine | Norm. entropy | Coverage |
 | :-- | :--: | --: | --: | --: |
-| Uniform generation | **yes** (cosine 0.83 > 0.55) | 0.832 | 0.00 | 1 |
-| After raising diversity | **no** | 0.388 | 0.844 | 13 |
+| Uniform generation | **yes** (0.83 > 0.54 = baseline 0.39 + margin) | 0.832 | 0.915 | 25 |
+| After raising diversity | **no** (0.39 < 0.69 limit) | 0.388 | 0.940 | 35 |
 
-The collapse is detected and reversed: the mean cosine drops from 0.83 to 0.39 and occupancy goes from 1 to 13 niches.
+The collapse is detected — by the *relative* baseline+margin rule, not a fixed constant — and reversed: the mean cosine drops from 0.83 to 0.39. (Normalized entropy stays high throughout here because the baseline warm-up has already spread occupancy across niches; the similarity signal is what trips and clears.) Under the live `bge` embedder the same reversal holds (collapse 0.88 > 0.80, recovery 0.70 quiet), where the old fixed 0.55 threshold would have misfired — the calibration's reason for being.
 
-**Suite and size.** The suite runs **81 tests** (unit, property, and end-to-end) green, hermetically (hash embedder and isolated state, no downloads). The engine is ~2,440 lines of Python; the tests, ~930. The value gate and the collapse reversal both pass.
+**Suite and size.** The suite runs **109 tests** (unit, property, and end-to-end) green, hermetically (hash embedder and isolated state, no downloads). The engine is ~3,100 lines of Python; the tests, ~1,400. The value gate and the collapse reversal both pass, offline and `--live`.
 
 ---
 
