@@ -31,7 +31,12 @@ from .session import Session
 # Tuning knobs (kept modest so first results stay quick — see plan §10 latency).
 DEDUP_TAU = 0.92
 KNN_K = 5
-OPEN_NICHES = 16
+# Open-axis (mechanism) niching. The partition is data-adaptive: cold-start fixed
+# centroids until ``OPEN_NICHE_FREEZE_FACTOR * OPEN_NICHES`` mechanism embeddings
+# have accumulated, then a one-time k-means fit freezes the cells (see
+# ``_accumulate_and_maybe_freeze``).
+OPEN_NICHES = 24
+OPEN_NICHE_FREEZE_FACTOR = 4
 MAX_DPP_POOL = 200
 
 
@@ -126,29 +131,126 @@ def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _open_axis_texts(
+    open_axis: Any, descriptors: List[Dict[str, Any]], texts: List[str]
+) -> List[str]:
+    """The text to embed for the open axis: its descriptor value, else the idea."""
+    return [str(d.get(open_axis.name) or t) for d, t in zip(descriptors, texts)]
+
+
 def assign_open_cells(
     spec: AxesSpec,
     descriptors: List[Dict[str, Any]],
     texts: List[str],
     embedder,
     seed: int,
-) -> Tuple[Optional[Any], List[Optional[int]]]:
-    """CVT (Voronoi) cell per item for the primary "open" axis.
+    nicher: Optional["archive_mod.CVTNicher"] = None,
+    open_niches: int = OPEN_NICHES,
+) -> Tuple[Optional[Any], List[Optional[int]], np.ndarray]:
+    """Voronoi cell per item for the primary "open" axis.
 
-    Returns ``(open_axis, cells)`` where ``cells[i]`` is the item's cell index
-    (or ``None`` when there is no open axis). Shared by :func:`ingest` and the
-    self-test so both place candidates through identical logic.
+    Returns ``(open_axis, cells, open_vecs)`` where ``cells[i]`` is the item's
+    cell index (or ``None`` when there is no open axis) and ``open_vecs`` are the
+    embedded open-axis texts (so callers can accumulate them without re-embedding).
+    When ``nicher`` is given (a frozen, data-fitted partition) it is used as-is;
+    otherwise a deterministic cold-start partition is built. Shared by
+    :func:`ingest` and the self-test so both place candidates identically.
     """
     open_axis = spec.primary_axis
     n = len(texts)
     if open_axis is None or n == 0:
-        return open_axis, [None] * n
-    open_texts = [
-        str(d.get(open_axis.name) or t) for d, t in zip(descriptors, texts)
-    ]
+        return open_axis, [None] * n, np.zeros((0, 1), dtype=np.float32)
+    open_texts = _open_axis_texts(open_axis, descriptors, texts)
     open_vecs = embedder.embed(open_texts)
-    nicher = archive_mod.CVTNicher(dim=open_vecs.shape[1], k=OPEN_NICHES, seed=seed)
-    return open_axis, nicher.cells(open_vecs)
+    if nicher is None:
+        nicher = archive_mod.CVTNicher(dim=open_vecs.shape[1], k=open_niches, seed=seed)
+    return open_axis, nicher.cells(open_vecs), open_vecs
+
+
+def _frozen_open_nicher(
+    on_state: Optional[Dict[str, Any]], open_axis: Optional[Any]
+) -> Optional["archive_mod.CVTNicher"]:
+    """The persisted frozen nicher, or ``None`` (cold start / no open axis)."""
+    if open_axis is None or not on_state:
+        return None
+    if on_state.get("frozen") and on_state.get("centroids"):
+        return archive_mod.CVTNicher.from_dict(on_state)
+    return None
+
+
+def _elite_open_cells(
+    arc: "archive_mod.Archive",
+    cand_store: Dict[str, Any],
+    open_axis: Any,
+    embedder,
+    nicher: "archive_mod.CVTNicher",
+) -> Dict[str, int]:
+    """Frozen-cell index for each niche, from its elite's open-axis embedding."""
+    nids: List[str] = []
+    texts: List[str] = []
+    for nid, niche in arc.niches.items():
+        rec = cand_store.get(niche.elite_id, {})
+        mech = str(rec.get("descriptor", {}).get(open_axis.name) or rec.get("text") or "")
+        nids.append(nid)
+        texts.append(mech)
+    if not texts:
+        return {}
+    cells = nicher.cells(embedder.embed(texts))
+    return {nid: cell for nid, cell in zip(nids, cells)}
+
+
+def _accumulate_and_maybe_freeze(
+    state: "State",
+    on_state: Optional[Dict[str, Any]],
+    open_axis: Optional[Any],
+    open_vecs: np.ndarray,
+    arc: "archive_mod.Archive",
+    cand_store: Dict[str, Any],
+    spec: AxesSpec,
+    embedder,
+    seed: int,
+    open_niches: int = OPEN_NICHES,
+    freeze_factor: int = OPEN_NICHE_FREEZE_FACTOR,
+) -> None:
+    """Grow the mechanism-embedding buffer; freeze the partition once it's full.
+
+    Until ``freeze_factor * open_niches`` open-axis embeddings have accumulated we
+    stay on the cold-start partition (only the buffer grows). On the cycle that
+    crosses the threshold we fit k-means **once**, persist the frozen centroids,
+    and re-key the archive onto them (:meth:`Archive.rekey_open_axis`) so existing
+    niche ids migrate without being scrambled. After freezing we never refit.
+    """
+    if open_axis is None:
+        return
+    on_state = dict(on_state or {})
+    if on_state.get("frozen"):
+        return  # already frozen — niche ids are fixed
+
+    accum: List[List[float]] = list(on_state.get("accum", []))
+    if open_vecs.shape[0]:
+        accum.extend([[float(x) for x in v] for v in open_vecs])
+
+    threshold = freeze_factor * open_niches
+    if len(accum) < threshold:
+        state.write_open_nicher({"frozen": False, "accum": accum})
+        return
+
+    # Threshold reached: fit once, freeze, and re-bucket the archive.
+    nicher = archive_mod.CVTNicher.fit(
+        np.asarray(accum, dtype=np.float32), k=open_niches, seed=seed
+    )
+    cell_by_nid = _elite_open_cells(arc, cand_store, open_axis, embedder, nicher)
+    arc.rekey_open_axis(spec, open_axis.name, cell_by_nid)
+    # Surviving elites carry the old niche id in their candidate record — refresh.
+    for nid, niche in arc.niches.items():
+        rec = cand_store.get(niche.elite_id)
+        if rec is not None:
+            rec["niche_id"] = nid
+            rec["coords"] = niche.coords
+
+    frozen = nicher.to_dict()
+    frozen["frozen"] = True
+    state.write_open_nicher(frozen)
 
 
 def _empty_cycle(arc: "archive_mod.Archive") -> Dict[str, Any]:
@@ -307,14 +409,26 @@ def ingest(
     survivors = [cand_list[i] for i in keep]
     surv_vecs = vecs[keep] if keep else np.zeros((0, vecs.shape[1]), dtype=np.float32)
 
-    open_axis, cells = assign_open_cells(
+    # Open-axis niching is data-adaptive: use the frozen partition if one has been
+    # fitted, else the deterministic cold-start partition.
+    open_axis = spec.primary_axis
+    on_state = state.read_open_nicher()
+    frozen_nicher = _frozen_open_nicher(on_state, open_axis)
+    open_axis, cells, open_vecs = assign_open_cells(
         spec, [c.descriptor for c in survivors], [c.text for c in survivors],
-        embedder, seed,
+        embedder, seed, nicher=frozen_nicher, open_niches=OPEN_NICHES,
     )
     novelties = _survivor_novelty(surv_vecs, existing_vecs, KNN_K)
     _place_survivors(
         survivors, surv_vecs, cells, novelties, open_axis,
         spec, arc, cand_store, stored_emb,
+    )
+
+    # Accumulate the mechanism embeddings; once enough exist, fit + freeze the
+    # partition once and re-key the archive onto the frozen cells.
+    _accumulate_and_maybe_freeze(
+        state, on_state, open_axis, open_vecs, arc, cand_store, spec,
+        embedder, seed,
     )
 
     slate, slate_ids = _select_slate(arc, stored_emb, cand_store, spec, seed)

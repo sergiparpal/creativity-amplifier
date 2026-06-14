@@ -87,6 +87,10 @@ class State:
     def embeddings_path(self) -> Path:
         return self.root / "embeddings.json"
 
+    @property
+    def open_nicher_path(self) -> Path:
+        return self.root / "open_nicher.json"
+
     def memory_dir(self, domain: str) -> Path:
         return self.root / "memory" / _path_slug(domain)
 
@@ -153,6 +157,13 @@ class State:
 
     def write_embeddings(self, embeddings: Dict[str, List[float]]) -> None:
         self.write_json(self.embeddings_path, embeddings)
+
+    def read_open_nicher(self) -> Optional[Dict[str, Any]]:
+        """Persisted open-axis nicher: cold-start accumulation or frozen centroids."""
+        return self.read_json(self.open_nicher_path, None)
+
+    def write_open_nicher(self, data: Dict[str, Any]) -> None:
+        self.write_json(self.open_nicher_path, data)
 
     # -- memory (namespaced by domain) ------------------------------------- #
     def append_comparison(self, domain: str, event: Dict[str, Any]) -> None:

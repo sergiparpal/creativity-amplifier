@@ -32,23 +32,69 @@ def _niche_slug(value: Any) -> str:
     return s or "none"
 
 
-class CVTNicher:
-    """Deterministic CVT tessellation of the unit sphere for an open axis.
+def _l2_rows(mat: np.ndarray) -> np.ndarray:
+    """L2-normalize each row (zero rows pass through unchanged)."""
+    mat = np.asarray(mat, dtype=np.float32)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return (mat / norms).astype(np.float32)
 
-    Centroids are fixed random unit directions seeded by ``seed`` (so cell ids
-    are stable across cycles without persisting anything). Assignment is by
-    maximum cosine similarity.
+
+class CVTNicher:
+    """A **frozen** Voronoi partition of the open-axis embedding space.
+
+    Despite the historical name this is *not* a running centroidal Voronoi
+    tessellation: the centroids are fixed for the life of the nicher and a point
+    is assigned to the centroid of maximum cosine similarity, so it always lands
+    in the same cell. There are two ways to obtain the centroids:
+
+    * **cold start** (the default constructor) — deterministic unit directions
+      seeded by ``seed``. The boundaries are arbitrary w.r.t. the data, but they
+      let the very first cycles assign deterministically before enough mechanism
+      embeddings exist to fit a data-adaptive partition.
+    * **fitted-and-frozen** (:meth:`fit`) — k-means centroids learned *once* over
+      accumulated mechanism embeddings, L2-normalized, then frozen. Boundaries
+      now follow where the data actually lies. The fit happens a single time and
+      the centroids are persisted, so niche ids stay stable across later cycles.
+
+    Either way the centroids never change after construction.
     """
 
-    def __init__(self, dim: int, k: int = 16, seed: int = 0):
+    def __init__(
+        self,
+        dim: int,
+        k: int = 16,
+        seed: int = 0,
+        centroids: Optional[np.ndarray] = None,
+    ):
+        self.seed = int(seed)
+        if centroids is not None:
+            self.centroids = _l2_rows(centroids)
+            self.k = int(self.centroids.shape[0])
+            self.dim = int(self.centroids.shape[1])
+            return
         self.dim = int(dim)
         self.k = int(k)
-        self.seed = int(seed)
         rng = np.random.default_rng(seed)
-        c = rng.standard_normal((self.k, self.dim))
-        norms = np.linalg.norm(c, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        self.centroids = (c / norms).astype(np.float32)
+        self.centroids = _l2_rows(rng.standard_normal((self.k, self.dim)))
+
+    @classmethod
+    def fit(cls, vecs: np.ndarray, k: int, seed: int = 0) -> "CVTNicher":
+        """Fit k-means **once** over accumulated embeddings; return a frozen nicher.
+
+        Uses ``sklearn.cluster.KMeans(random_state=seed)`` (deterministic) and
+        keeps the L2-normalized cluster centers as the frozen centroids. ``k`` is
+        clamped to the number of available points.
+        """
+        from sklearn.cluster import KMeans
+
+        vecs = np.asarray(vecs, dtype=np.float64)
+        n = int(vecs.shape[0])
+        k_eff = max(1, min(int(k), n))
+        km = KMeans(n_clusters=k_eff, random_state=int(seed), n_init=10)
+        km.fit(vecs)
+        return cls(dim=int(vecs.shape[1]), k=k_eff, seed=seed,
+                   centroids=km.cluster_centers_)
 
     def cell(self, vec: np.ndarray) -> int:
         vec = np.asarray(vec, dtype=np.float32)
@@ -60,6 +106,23 @@ class CVTNicher:
             return []
         sims = vecs @ self.centroids.T  # (n, k)
         return [int(i) for i in np.argmax(sims, axis=1)]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "centroids": [[float(x) for x in row] for row in self.centroids],
+            "k": self.k,
+            "dim": self.dim,
+            "seed": self.seed,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CVTNicher":
+        return cls(
+            dim=int(d.get("dim", 0)),
+            k=int(d.get("k", 0)),
+            seed=int(d.get("seed", 0)),
+            centroids=np.asarray(d["centroids"], dtype=np.float32),
+        )
 
 
 def continuous_bin(axis: Axis, value: Any) -> int:
@@ -157,6 +220,58 @@ class Archive:
             cur.coords = coords
             return True
         return False
+
+    def rekey_open_axis(
+        self,
+        spec: AxesSpec,
+        open_axis_name: str,
+        new_cell_by_nid: Dict[str, int],
+    ) -> Dict[str, str]:
+        """Re-assign every niche's open-axis bucket to a (frozen) cell and merge.
+
+        ``new_cell_by_nid`` maps each current ``niche_id`` to its new open-axis
+        cell index. Each niche's id is rebuilt with that cell in place of the old
+        open bucket; niches whose rebuilt id now collides are **merged by the
+        elite rule** (higher ``fitness`` wins; ties break toward higher
+        ``novelty``), and their occupancy counts are summed. This is the one-time
+        re-keying done when the open-axis partition freezes, so the archive is
+        re-bucketed onto the frozen centroids without being scrambled.
+
+        Returns ``{old_niche_id: new_niche_id}``.
+        """
+        new_niches: Dict[str, Niche] = {}
+        new_counts: Dict[str, int] = {}
+        remap: Dict[str, str] = {}
+        for old_nid, niche in self.niches.items():
+            coords = dict(niche.coords)
+            cell = new_cell_by_nid.get(old_nid)
+            if cell is not None:
+                coords[open_axis_name] = f"cell{cell}"
+            new_nid = "|".join(
+                f"{a.name}={coords.get(a.name, 'none')}" for a in spec.axes
+            )
+            remap[old_nid] = new_nid
+            cur = new_niches.get(new_nid)
+            if cur is None:
+                new_niches[new_nid] = Niche(
+                    id=new_nid, coords=coords, elite_id=niche.elite_id,
+                    fitness=niche.fitness, novelty=niche.novelty,
+                )
+            else:
+                better = (niche.fitness > cur.fitness) or (
+                    niche.fitness == cur.fitness and niche.novelty > cur.novelty
+                )
+                if better:
+                    cur.elite_id = niche.elite_id
+                    cur.fitness = niche.fitness
+                    cur.novelty = niche.novelty
+                    cur.coords = coords
+            new_counts[new_nid] = new_counts.get(new_nid, 0) + self.counts.get(
+                old_nid, 0
+            )
+        self.niches = new_niches
+        self.counts = new_counts
+        return remap
 
     def elite_ids(self) -> List[str]:
         return [n.elite_id for n in self.niches.values() if n.elite_id]

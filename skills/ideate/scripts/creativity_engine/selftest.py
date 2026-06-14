@@ -153,7 +153,9 @@ def _place(candidates, spec, embedder, seed):
     texts = [c["text"] for c in candidates]
     descriptors = [c["descriptor"] for c in candidates]
     vecs = embedder.embed(texts)
-    open_axis, cells = pipeline.assign_open_cells(spec, descriptors, texts, embedder, seed)
+    open_axis, cells, _open_vecs = pipeline.assign_open_cells(
+        spec, descriptors, texts, embedder, seed
+    )
     niche_ids = []
     for c, cell in zip(candidates, cells):
         ocell = {open_axis.name: cell} if (open_axis and cell is not None) else {}

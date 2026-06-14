@@ -36,7 +36,7 @@ candidates_per_generation: <int> # how many the agent drafts per cycle (default 
 | :-- | :-- | :-- |
 | `categorical` | a discrete label (audience, register, format…) | one bucket per distinct value |
 | `continuous` | a number in `range` (edginess, boldness…) | `range` split into `bins` cells |
-| `open` | a free-text "how" / mechanism / approach | CVT (Voronoi) cells over embeddings |
+| `open` | a free-text "how" / mechanism / approach | data-adaptive Voronoi cells over embeddings (fit-once-then-freeze k-means; deterministic cold start) |
 
 Mark exactly one axis — usually an `open` one — with `primary_novelty: true`. It
 is the main carrier of novelty and is niched geometrically over embeddings, so

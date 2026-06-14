@@ -92,9 +92,9 @@ The heart of the system is the `ingest` command, which runs a chain of seven sta
 
 - `categorical` axis → the value itself (normalized);
 - `continuous` axis → the *bin* index over its range (5 bins by default);
-- `open` axis → a CVT (Voronoi) cell over the *embedding* of the axis value.
+- `open` axis → a frozen Voronoi cell over the *embedding* of the axis value.
 
-For the open axis —the main carrier of novelty— a `CVTNicher` is used: *k* = 16 centroids as random unit directions fixed by a seed (stable across cycles without persisting anything), with assignment by maximum cosine similarity. Exactly one axis may be marked `primary_novelty`. The archive keeps **at most one elite per niche**; within a niche the higher `fitness` wins (fitness coming from the judge), and ties break toward higher geometric novelty. The judge is never invoked here: geometry owns diversity and quality only ranks within an already-diverse niche.
+For the open axis —the main carrier of novelty— a `CVTNicher` provides a **data-adaptive, fit-once-then-freeze** partition: early cycles assign against deterministic cold-start centroids (random unit directions fixed by the seed), and once `OPEN_NICHE_FREEZE_FACTOR × OPEN_NICHES` mechanism embeddings have accumulated, *k*-means is fit **once** (`random_state = seed`), the centroids are persisted, and the existing archive is re-keyed onto them (merging any collapsed niches by the elite rule). It never refits afterward, so cell ids stay stable across cycles; assignment is by maximum cosine similarity. Exactly one axis may be marked `primary_novelty`. The archive keeps **at most one elite per niche**; within a niche the higher `fitness` wins (fitness coming from the judge), and ties break toward higher geometric novelty. The judge is never invoked here: geometry owns diversity and quality only ranks within an already-diverse niche.
 
 **Geometric novelty.** The novelty of each survivor is the mean cosine distance to its *k* = 5 nearest neighbors within (existing elites ∪ other survivors). It is a pure property of where the point falls relative to others: far from its neighbors it is novel, in a crowd it is not. It is the only thing that decides "is this new?".
 
@@ -192,7 +192,7 @@ An honest accounting must name what this architecture does **not** solve.
 
 **No meta-level.** The variation operators are static prose. There is no Promptbreeder-style co-evolution of operators nor —harder still— co-transformation of the evaluator together with the rules that define the space. The transformational ceiling is still there.
 
-**Scope.** It is single-user, with a single embedding lineage per project, and modest latency knobs (DPP pool capped at 200, 16 CVT cells). The API embedding connector is a *stub*.
+**Scope.** It is single-user, with a single embedding lineage per project, and modest latency knobs (DPP pool capped at 200, 24 open-axis cells). The API embedding connector is a *stub*.
 
 In sum: the architecture **does not solve the underlying problem, it relocates it** to manageable ground. It does not make subjective value formalizable; it replaces it with a surgical allocation of human attention, and leaves the diversity problem nearly solved in engineering terms.
 
@@ -274,7 +274,8 @@ State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), 
 | :-- | --: | :-- |
 | `DEDUP_TAU` | 0.92 | near-duplicate cosine threshold |
 | `KNN_K` | 5 | neighbors for geometric novelty |
-| `OPEN_NICHES` | 16 | CVT cells for the open axis |
+| `OPEN_NICHES` | 24 | frozen Voronoi cells for the open axis |
+| `OPEN_NICHE_FREEZE_FACTOR` | 4 | freeze the open-axis partition once `4 × OPEN_NICHES` mechanisms accumulate |
 | `MAX_DPP_POOL` | 200 | cap on the elite *pool* for the DPP |
 | `slate_size` | 6 | default slate size |
 | `candidates_per_generation` | 12 | candidates per generation |

@@ -103,10 +103,14 @@ Subtlety worth preserving: the **monitor runs on the RAW pre-dedup generation ve
 near-duplicate batch still registers as collapsing instead of being hidden behind survivors.
 
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
-`continuous` → bin index over its range, `open` → a CVT (Voronoi) cell over the *embedding* of the
-axis value (`CVTNicher`, deterministic centroids seeded by `--seed`). Exactly one axis may be the
-`primary_novelty` "open" axis (the novelty carrier). Within a niche, higher `fitness` wins; ties
-break toward higher novelty.
+`continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
+the axis value (`CVTNicher`). The open-axis partition is **data-adaptive (fit-once-then-freeze)**:
+early cycles use deterministic cold-start centroids seeded by `--seed`; once `OPEN_NICHE_FREEZE_FACTOR
+* OPEN_NICHES` mechanism embeddings have accumulated, k-means is fit **once** (`KMeans(random_state=
+seed)`), the centroids are persisted (`open_nicher.json`), and the archive is **re-keyed** onto them
+(`Archive.rekey_open_axis`, merging collapsed niches by the elite rule). It never refits after
+freezing, so niche ids stay stable. Exactly one axis may be the `primary_novelty` "open" axis (the
+novelty carrier). Within a niche, higher `fitness` wins; ties break toward higher novelty.
 
 **Embedders** (`embed.py`), selected by `CREATIVITY_EMBEDDER` (`local` default):
 - `local` — sentence-transformers `BAAI/bge-small-en-v1.5`, CPU, lazily downloaded (real runs).
