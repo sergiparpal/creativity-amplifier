@@ -71,7 +71,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 
 | Command | Does |
 | :-- | :-- |
-| `init-project` | create state dirs, snapshot the resolved axes |
+| `init-project` | create state dirs, snapshot the resolved axes + session settings |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor (one cycle) |
 | `remember` | append a comparison/pin to preference memory |
@@ -87,8 +87,13 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   loading/validation. The engine **never assumes a domain**; every command receives resolved axes.
 - `embed.py`, `novelty.py`, `diversity.py`, `monitor.py`, `archive.py` — the math (see below).
 - `state.py`, `memory.py` — file-based persistence and preference memory.
-- `pipeline.py` — orchestration; one public function per CLI command, each returning a
-  JSON-serializable dict. **This is where to start reading.**
+- `session.py` — per-invocation context (`Session`): bundles the `State` handle, the resolved
+  preference **domain** (memory namespace), the axes **spec**, and the **embedder**, all resolved
+  lazily. It centralizes the rule that the memory namespace *is* the domain of the persisted axes
+  snapshot, so `ingest`/`recall`/`remember`/`parents` can never drift on which namespace a
+  project's memory lives in.
+- `pipeline.py` — orchestration; one public function per CLI command, built on `Session` and each
+  returning a JSON-serializable dict. **This is where to start reading.**
 - `__main__.py` — thin argparse wrapper over `pipeline`.
 
 **The `ingest` cycle** (`pipeline.ingest`, the heart of the loop):
@@ -119,8 +124,11 @@ about a domain is baked into the plugin or engine.
 
 **State** (`state.py`) is written **outside the plugin** so reinstalls don't wipe it:
 `~/.creativity-amplifier/<project>/` (override the base with `CREATIVITY_AMPLIFIER_HOME`). Writes
-are atomic (temp file + `os.replace`). Preference memory (`comparisons.jsonl`, `pins.json`) is
-**namespaced per domain** so switching domains keeps preferences separate.
+are atomic (temp file + `os.replace`). Per-project files are `meta.json` (project/session
+settings), `axes.json` (the resolved axes geometry — kept separate from settings so the engine's
+`AxesSpec` stays pure), `archive.json`, `candidates.json`, and `embeddings.json`. Preference memory
+(`comparisons.jsonl`, `pins.json`) lives in a per-domain sub-directory, **namespaced per domain**
+so switching domains keeps preferences separate.
 
 **The self-test is the correctness contract** (`selftest.py`). It enforces a **value gate** — the
 engine's diverse slate must beat a single-shot baseline on mean pairwise distance, Vendi score, and
@@ -137,4 +145,5 @@ pressure rises). Treat a `selftest` failure as a real regression in the diversit
   `CREATIVITY_AMPLIFIER_HOME`). Keep new tests offline — never trigger a model download.
 - Determinism matters: niching/DPP/CVT take a `--seed`; reuse it across a session's cycles.
 - `config.ConfigError` messages are user-facing (printed by the CLI) — write them for the operator.
-- `docs/IMPLEMENTATION_PLAN.md` is a historical build plan, not current spec.
+- `docs/PAPER.md` is the reference-architecture paper (rationale and positioning), not the
+  implementation spec — `SKILL.md` + this file are the spec.

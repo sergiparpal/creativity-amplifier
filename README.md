@@ -116,7 +116,7 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 
 | Command | Does |
 | :-- | :-- |
-| `init-project` | create state dirs, snapshot the resolved axes |
+| `init-project` | create state dirs, snapshot the resolved axes + session settings |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor |
 | `remember` | append a comparison/pin to preference memory |
@@ -157,9 +157,15 @@ creativity-amplifier/                  # plugin root (pass to --plugin-dir)
 │       ├── setup.sh, requirements.txt, pyproject.toml
 │       └── creativity_engine/         # the Python engine (CLI)
 ├── tests/                             # pytest (dev-only)
-├── docs/IMPLEMENTATION_PLAN.md        # internal build plan (historical)
+├── docs/PAPER.md                      # reference-architecture paper (rationale)
 └── README.md
 ```
+
+## Background
+
+The design rationale — why diversity is owned by geometry and never by the judge, and how this
+maps onto blind-variation/selective-retention, Quality-Diversity (MAP-Elites, novelty search), and
+DPP selection — is written up in [`docs/PAPER.md`](docs/PAPER.md).
 
 ## License
 
