@@ -118,6 +118,24 @@ def test_env_var_selects_provider(monkeypatch):
     reset_cache()
 
 
+def test_template_method_normalizes_any_provider():
+    # A provider that returns wildly unnormalized rows still comes out unit-norm,
+    # because Embedder.embed() centralizes l2_normalize — a new provider can't
+    # forget to normalize.
+    class RawProvider(embed.Embedder):
+        name = "raw"
+        dim = 3
+
+        def _embed_raw(self, texts):
+            return np.array([[3.0, 4.0, 0.0]] * len(texts), dtype=np.float32)
+
+    out = RawProvider().embed(["a", "b"])
+    assert out.shape == (2, 3)
+    assert np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-5)
+    # the empty case still short-circuits to (0, dim) without calling _embed_raw
+    assert RawProvider().embed([]).shape == (0, 3)
+
+
 def test_dedup_tau_is_per_embedder():
     # Each family gets its own near-duplicate threshold; the scales differ.
     assert default_dedup_tau("hash") == 0.92

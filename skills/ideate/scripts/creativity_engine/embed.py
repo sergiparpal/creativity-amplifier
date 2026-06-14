@@ -56,12 +56,26 @@ def l2_normalize(mat: np.ndarray) -> np.ndarray:
 
 
 class Embedder:
-    """Interface: turn texts into an ``(n, d)`` array of normalized rows."""
+    """Interface: turn texts into an ``(n, d)`` array of normalized rows.
+
+    ``embed`` is a **template method** — it coerces the inputs to ``str``, short-
+    circuits the empty case, calls the subclass hook :meth:`_embed_raw`, and then
+    L2-normalizes. Centralizing the normalization here means a new provider only
+    implements ``_embed_raw`` and *cannot forget* to return unit rows, which the
+    rest of the math relies on (cosine == dot product).
+    """
 
     name: str = "base"
     dim: int = 0
 
-    def embed(self, texts: Sequence[str]) -> np.ndarray:  # pragma: no cover
+    def embed(self, texts: Sequence[str]) -> np.ndarray:
+        texts = [t if isinstance(t, str) else str(t) for t in texts]
+        if not texts:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        return l2_normalize(self._embed_raw(texts))
+
+    def _embed_raw(self, texts: List[str]) -> np.ndarray:  # pragma: no cover
+        """Return UNnormalized ``(n, d)`` rows; the base class normalizes them."""
         raise NotImplementedError
 
 
@@ -82,12 +96,8 @@ class HashingEmbedder(Embedder):
             norm=None,  # we normalize ourselves so zero rows are handled
         )
 
-    def embed(self, texts: Sequence[str]) -> np.ndarray:
-        texts = [t if isinstance(t, str) else str(t) for t in texts]
-        if not texts:
-            return np.zeros((0, self.dim), dtype=np.float32)
-        mat = self._vec.transform(texts).toarray()
-        return l2_normalize(mat)
+    def _embed_raw(self, texts: List[str]) -> np.ndarray:
+        return self._vec.transform(texts).toarray()
 
 
 class LocalEmbedder(Embedder):
@@ -112,18 +122,14 @@ class LocalEmbedder(Embedder):
             self.dim = int(get_dim())
         return self._model
 
-    def embed(self, texts: Sequence[str]) -> np.ndarray:
+    def _embed_raw(self, texts: List[str]) -> np.ndarray:
         model = self._ensure()
-        texts = [t if isinstance(t, str) else str(t) for t in texts]
-        if not texts:
-            return np.zeros((0, self.dim), dtype=np.float32)
-        vecs = model.encode(
+        return model.encode(
             list(texts),
             convert_to_numpy=True,
             normalize_embeddings=True,
             show_progress_bar=False,
         )
-        return l2_normalize(vecs)
 
 
 class APIEmbedder(Embedder):
@@ -140,7 +146,7 @@ class APIEmbedder(Embedder):
         self.api_key = os.environ.get("CREATIVITY_EMBED_API_KEY", "")
         self.dim = 0
 
-    def embed(self, texts: Sequence[str]) -> np.ndarray:  # pragma: no cover
+    def _embed_raw(self, texts: List[str]) -> np.ndarray:  # pragma: no cover
         raise NotImplementedError(
             f"API embedder provider {self.provider!r} is a stub; set "
             f"{ENV_VAR}=local or =hash, or wire up a backend in APIEmbedder."
