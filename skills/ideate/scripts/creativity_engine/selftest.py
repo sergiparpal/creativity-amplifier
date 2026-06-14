@@ -16,6 +16,7 @@ highest-novelty idea in each slate.
 from __future__ import annotations
 
 import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -231,6 +232,17 @@ def _collapse_reversal(spec, settings, axes, seed, home, project):
 
 def run(project: str = "selftest", live: bool = False, seed: int = 0,
         home: Optional[Path] = None) -> Dict[str, Any]:
+    # The self-test must be hermetic. With no explicit home (the CLI path) it
+    # would otherwise write to the persistent default home under fixed project
+    # names; init-project never resets a project, so MAP-Elites occupancy would
+    # accumulate across runs and eventually drive normalized niche entropy below
+    # the collapse threshold — falsely failing the collapse-reversal check. Run
+    # in a throwaway temp home instead. Callers that pass a home (the test suite)
+    # already isolate themselves and skip this.
+    if home is None:
+        with tempfile.TemporaryDirectory(prefix="creativity-selftest-") as tmp:
+            return run(project=project, live=live, seed=seed, home=Path(tmp))
+
     # deterministic embedder unless a live run is explicitly requested
     os.environ["CREATIVITY_EMBEDDER"] = "local" if live else "hash"
     embed.reset_cache()
