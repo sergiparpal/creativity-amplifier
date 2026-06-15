@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/provision.sh\"",
+            "async": true,
+            "timeout": 600,
+            "statusMessage": "Provisioning the creativity engine (one-time)…"
+          },
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/provision.ps1\"",
+            "async": true,
+            "timeout": 600,
+            "statusMessage": "Provisioning the creativity engine (one-time)…"
+          }
+        ]
+      }
+    ]
+  }
+}

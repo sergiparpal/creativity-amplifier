@@ -40,9 +40,34 @@ and any change must preserve it:
 - The **anti-collapse monitor is never bypassed** — when it flags convergence the skill raises
   diversity pressure next round; it is never removed or worked around.
 
+## Install & provisioning
+
+Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
+
+- **End users (marketplace):** `/plugin marketplace add sergiparpal/creativity-amplifier`
+  then `/plugin install creativity-amplifier@sergiparpal`. A `SessionStart` hook
+  (`hooks/hooks.json`, `async: true`) runs `bootstrap.py` in a detached background
+  process right after load — non-blocking, idempotent, concurrency-safe. The venv is
+  built in **`${CLAUDE_PLUGIN_DATA}/venv`** (the plugin's persistent data dir, so it
+  survives plugin updates) and the engine is installed **non-editable** there. Default
+  install is the **full semantic stack** (the `local` sentence-transformers embedder).
+- **Developers:** `bash skills/ideate/scripts/setup.sh` (or `python3
+  skills/ideate/scripts/bootstrap.py`) builds `skills/ideate/.venv` with the engine
+  installed **editable**, then `claude --plugin-dir .`.
+
+`bootstrap.py` uses `uv` when it is on PATH (faster) and falls back to `python -m venv`
++ `pip` otherwise; it never auto-installs `uv` or any other tool. It writes the resolved
+interpreter path to `<venv>/engine-python.txt` (the skill reads this to locate the
+interpreter) and a content hash to `<venv>/install.stamp` (rebuild trigger on a plugin
+update that changes deps or — in non-editable mode — engine sources). The two
+`hooks/provision.*` launchers are thin: they only find a Python ≥ 3.11 and hand off to
+`bootstrap.py --background`. If the engine isn't ready when `/ideate` runs, the skill
+shows a one-time "setting up…" message and finishes the build in the foreground.
+
 ## Commands
 
-Run Python through the engine's own venv (`skills/ideate/.venv/bin/python`), not system Python.
+Run Python through the engine's own venv (`skills/ideate/.venv/bin/python` in dev), not
+system Python.
 
 ```bash
 # One-time setup: create skills/ideate/.venv and install deps (idempotent)

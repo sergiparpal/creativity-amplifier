@@ -7,8 +7,8 @@ follow this file. Everything is domain-agnostic: the only domain knowledge is th
 Set once:
 
 ```
-ENGINE = "<PYBIN>" -m creativity_engine    # <PYBIN> = contents of
-                                           # ${CLAUDE_SKILL_DIR}/.venv/engine-python.txt
+ENGINE = "<PYBIN>" -m creativity_engine    # <PYBIN> = contents of the engine-python.txt
+                                           # pointer (see step 0 for its location)
 PROJECT = <short slug for this session, e.g. "campaign-jun14">
 ```
 
@@ -20,18 +20,33 @@ reproducibility.
 
 ## 0. Ensure the engine
 
-If `${CLAUDE_SKILL_DIR}/.venv` does not exist, run once:
+The engine venv **auto-provisions in the background** when the plugin loads (a
+`SessionStart` hook runs `bootstrap.py`), so it is usually ready before you need it.
+Find the interpreter pointer at the **first** path that exists:
+
+- `${CLAUDE_PLUGIN_DATA}/venv/engine-python.txt`  — marketplace install (the venv
+  lives in the plugin's persistent data dir, so it survives plugin updates);
+- `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt`    — dev install (`--plugin-dir .`
+  or `bash scripts/setup.sh`).
+
+Read that file; its contents are `<PYBIN>`.
+
+**If neither pointer exists yet**, the one-time setup is still running or hasn't
+started. Tell the user once that you're setting up the engine (a one-time, multi-
+minute download of ML libraries + a small embedding model), then finish/await it in
+the foreground (idempotent; waits for any in-progress background provision):
 
 ```
-python3 ${CLAUDE_SKILL_DIR}/scripts/bootstrap.py   # Windows: python ... or py ...
+"<PY>" "${CLAUDE_SKILL_DIR}/scripts/bootstrap.py" --venv "${CLAUDE_PLUGIN_DATA}/venv"
+# <PY> = python3 (macOS/Linux/WSL) or py / python (Windows)
 ```
 
-Then read the interpreter path from `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt`
-and use it as `<PYBIN>` in the command above.
-
-This creates the venv and installs deps (local CPU embedder, no API key). If the
-user wants a hosted embedder, they set `CREATIVITY_EMBEDDER=api` plus the
-provider env vars before launching; you do not need a key otherwise.
+`bootstrap.py` creates the venv (using `uv` if it is on PATH, else `python -m venv`)
+and installs deps — the **local** CPU embedder (`BAAI/bge-small-en-v1.5`, no API key)
+by default. Re-read the pointer afterwards. If it still cannot build the venv (e.g.
+Python 3.11+ is missing), relay the printed error verbatim and stop — it is
+actionable. If the user wants a hosted embedder instead, they set
+`CREATIVITY_EMBEDDER=api` plus the provider env vars before launching.
 
 ---
 

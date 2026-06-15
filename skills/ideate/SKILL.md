@@ -24,13 +24,22 @@ slate. The user is the real selector.
 
 Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
 
-1. **Ensure the engine is ready.** If `${CLAUDE_SKILL_DIR}/.venv` is missing, run
-   the cross-platform bootstrap once (creates the venv + installs deps for this OS):
-   `python3 ${CLAUDE_SKILL_DIR}/scripts/bootstrap.py`
-   (on Windows use `python` or `py` instead of `python3`).
-2. **Set** `ENGINE = "<PYBIN>" -m creativity_engine`, where `<PYBIN>` is the path in
-   `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt` (written by the bootstrap). Quote it —
-   the Windows path may contain spaces. Then choose a short `PROJECT` id for this session.
+1. **Locate the engine interpreter.** The venv auto-provisions in the background when
+   the plugin loads, so it is usually ready already. Read the interpreter pointer from
+   the **first** of these that exists, and set `ENGINE = "<PYBIN>" -m creativity_engine`
+   (quote `<PYBIN>` — Windows paths may contain spaces):
+   - `${CLAUDE_PLUGIN_DATA}/venv/engine-python.txt`  (marketplace install)
+   - `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt`   (dev `--plugin-dir` / `setup.sh`)
+2. **If neither pointer exists yet**, the one-time setup is still running or hasn't
+   started. Tell the user **once**: "⏳ Setting up the creativity engine — a one-time
+   download of ML libraries and a small embedding model. This can take a few minutes;
+   I'll continue automatically when it's ready." Then run the bootstrap in the
+   foreground (idempotent; it waits for any in-progress background provision):
+   `"<PY>" "${CLAUDE_SKILL_DIR}/scripts/bootstrap.py" --venv "${CLAUDE_PLUGIN_DATA}/venv"`
+   where `<PY>` is `python3` (macOS/Linux/WSL) or `py`/`python` (Windows). When it
+   finishes, re-read the pointer. If the venv still can't be built (e.g. Python 3.11+
+   is missing), relay the bootstrap's error message verbatim and stop — it is
+   actionable. Then choose a short `PROJECT` id for this session.
 3. **Resolve axes for this session** (diversity is only meaningful relative to a
    set of descriptor axes). Cascade:
    - if the user named a domain that has a config in

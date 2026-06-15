@@ -31,23 +31,60 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   descriptor axes — it resolves them per session (named domain → inferred &
   confirmed → generic fallback). Nothing about a domain is baked into the plugin.
 
-## Install & run (local development)
+## Install (one command)
 
-Requirements: Claude Code (latest), Python 3.11+.
+Requirements: Claude Code (latest), Python 3.11+ on your PATH. Works the same in the
+**CLI** and the **desktop app**, on **Windows (incl. WSL), macOS, and Linux**.
 
-```bash
-# 1. Build the engine venv (Windows / macOS / Linux)
-python3 skills/ideate/scripts/bootstrap.py     # Windows: python ... or py ...
+In Claude Code, add this repo as a plugin marketplace and install the plugin:
 
-# 2. Load the plugin in Claude Code without installing it
-claude --plugin-dir .
+```
+/plugin marketplace add sergiparpal/creativity-amplifier
+/plugin install creativity-amplifier@sergiparpal
+```
 
-# 3. In Claude Code, invoke the skill with a brief in ANY subject
+That's it — no clone, no `setup.sh`, no `--plugin-dir`. On the next session start, the
+plugin **provisions its own Python engine in the background**: it builds a virtualenv
+and installs the full semantic stack (numpy, scikit-learn, and the local
+`sentence-transformers` embedder, `BAAI/bge-small-en-v1.5`). This is a one-time
+download of a few hundred MB and can take a few minutes; it runs **non-blocking**, so
+Claude Code stays usable the whole time. The venv is stored in the plugin's persistent
+data directory, so it **survives plugin updates**.
+
+If `uv` is on your PATH it's used for a faster install; otherwise the bundled
+`python -m venv` + `pip` path is used. Nothing is auto-installed onto your system
+beyond that venv.
+
+Then invoke the skill with a brief in ANY subject:
+
+```
 /creativity-amplifier:ideate names for a privacy-first calendar app
 /creativity-amplifier:ideate research hypotheses for why week-2 retention dropped
 ```
 
-Validate the plugin at any time:
+If you run `/ideate` before the one-time setup has finished, the skill tells you it's
+**setting up the engine** and continues automatically once it's ready — you never have
+to run a setup step yourself. (If Python 3.11+ isn't found, it says so with a fix.)
+
+## Local development (fallback)
+
+To hack on the plugin from a checkout instead of installing it:
+
+```bash
+# 1. Build the engine venv (Windows / macOS / Linux)
+python3 skills/ideate/scripts/bootstrap.py     # Windows: python ... or py ...
+#    or, equivalently:  bash skills/ideate/scripts/setup.sh
+
+# 2. Load the plugin in Claude Code without installing it
+claude --plugin-dir .
+
+# 3. Invoke the skill
+/creativity-amplifier:ideate names for a privacy-first calendar app
+```
+
+In this mode the venv lives at `skills/ideate/.venv/` and the engine is installed
+editable, so source edits take effect without a rebuild. Validate the plugin at any
+time:
 
 ```bash
 claude plugin validate .          # or: claude plugin validate --strict .
@@ -162,13 +199,20 @@ isn't installed.
 ## Layout
 
 ```
-creativity-amplifier/                  # plugin root (pass to --plugin-dir)
-├── .claude-plugin/plugin.json         # manifest
+creativity-amplifier/                  # plugin root
+├── .claude-plugin/
+│   ├── plugin.json                    # manifest
+│   └── marketplace.json               # marketplace entry (for /plugin marketplace add)
+├── hooks/
+│   ├── hooks.json                     # SessionStart hook: auto-provision the venv
+│   ├── provision.sh                   # POSIX launcher (sh / Git Bash / WSL)
+│   └── provision.ps1                  # Windows-PowerShell launcher
 ├── skills/ideate/
 │   ├── SKILL.md                       # model-invoked orchestration (concise)
 │   ├── references/                    # loop, operators, judge rubric, axis inference
 │   ├── config/domains/                # _schema.md, generic.yaml, examples/*.yaml
 │   └── scripts/
+│       ├── bootstrap.py               # cross-platform self-provisioning installer
 │       ├── setup.sh, requirements.txt, pyproject.toml
 │       └── creativity_engine/         # the Python engine (CLI)
 ├── tests/                             # pytest (dev-only)
