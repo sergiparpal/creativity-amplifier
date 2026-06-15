@@ -66,6 +66,42 @@ If you run `/ideate` before the one-time setup has finished, the skill tells you
 **setting up the engine** and continues automatically once it's ready — you never have
 to run a setup step yourself. (If Python 3.11+ isn't found, it says so with a fix.)
 
+## What happens when you run it
+
+You don't need any of the math below to use the plugin — a session is just a
+back-and-forth chat, and **you are the one choosing the ideas**. Here is what each
+step looks like and what you do.
+
+1. **You give a brief.** Run `/creativity-amplifier:ideate <your brief>` for whatever
+   you want ideas about — product names, campaign angles, plot twists, research
+   hypotheses, anything. That's the only command you have to remember.
+2. **Claude confirms the "angles" — one quick question.** Before generating, Claude
+   proposes a handful of *axes*: the dimensions it will deliberately spread ideas
+   across (for names, say: tone, imagery, length, and how the name is built). It asks
+   **one** short question to confirm them. Just reply "ok", or tweak in plain words —
+   "make it edgier", "drop the length one". *(If you named a known domain it skips
+   straight ahead.)*
+3. **Claude shows you a varied slate.** Claude drafts a batch of ideas, quietly drops
+   any that are off-brief or don't make sense, and the engine picks a few that are as
+   *different from one another* as possible — not just the "best" ones. Each idea comes
+   with a short note on why it counts as distinct, so you can see the spread. **You
+   read them over.**
+4. **You steer with a couple of quick comparisons.** Claude asks only the few most
+   useful **A-vs-B** questions — "which points in a better direction, A or B?" (you can
+   also say "neither"). You can **pin** any idea you like as a "stepping stone" to keep
+   exploring from. Reacting and pinning is the main thing you do.
+5. **Claude runs another round, building on your picks.** Using what you preferred and
+   pinned, Claude generates a fresh batch — pushing for ideas that are genuinely *new*,
+   not variations on the same theme. If things start looking samey, a built-in monitor
+   notices and forces more variety the next round.
+6. **Repeat until you're happy, then stop.** Loop as many rounds as you like; say
+   "stop" (or "that's enough") when you have what you need. Your preferences are
+   remembered for the next time you ideate in the same kind of domain.
+
+In short: **you give a brief, confirm the angles once, then react to slates and pin
+favorites while Claude keeps widening the search** until you're satisfied. The rest of
+this README is for people who want to develop on it or understand the internals.
+
 ## Local development (fallback)
 
 To hack on the plugin from a checkout instead of installing it:
@@ -105,9 +141,11 @@ export CREATIVITY_EMBED_API_KEY=...      # your key
 `CREATIVITY_EMBEDDER=hash` selects a deterministic, dependency-light embedder used
 by the tests and the offline self-test (no model download).
 
-## How a session works
+## How a session works (under the hood)
 
-The skill follows `skills/ideate/references/loop.md`. One cycle:
+The plain-language walkthrough is in [**What happens when you run it**](#what-happens-when-you-run-it)
+above; this is the same loop with the internals. The skill follows
+`skills/ideate/references/loop.md`. One cycle:
 
 1. **Resolve axes.** If you name a domain with a config in
    `skills/ideate/config/domains/examples/`, it's loaded. Otherwise the agent
