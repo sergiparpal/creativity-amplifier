@@ -58,6 +58,9 @@ the natural scale of similarity.
 | `monitor_min_baseline` | 2 | samples needed before the relative rule applies |
 | `under_generation_ratio` | 0.6 | prefilter guard: flag `under_generation` below this fraction of the per-gen target |
 | `state_prune_threshold` | 2000 | candidate-store size above which unreferenced records/embeddings are pruned (0 disables) |
+| `ask_sim_weight` | 0.5 | active-learning pair score: embedding-similarity weight (≤ 0 ⇒ compare region-separating pairs / explore) |
+| `ask_uncertainty_weight` | 0.3 | active-learning pair score: fitness-uncertainty weight |
+| `ask_novelty_weight` | 0.2 | active-learning pair score: novelty weight |
 
 ## Axis types
 

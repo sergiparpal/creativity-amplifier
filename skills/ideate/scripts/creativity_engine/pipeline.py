@@ -631,7 +631,14 @@ def ingest(
     # with remember/recall/parents (all share Session's snapshot resolution).
     domain = sess.domain
     comparisons = state.read_comparisons(domain)
-    ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
+    ask_pairs = memory.select_ask_pairs(
+        slate, stored_emb, comparisons, max_pairs=2,
+        weights=(
+            econfig.ask_sim_weight,
+            econfig.ask_uncertainty_weight,
+            econfig.ask_novelty_weight,
+        ),
+    )
 
     # State hygiene (long sessions): drop candidate records/embeddings nothing reads
     # again. Keep set = archive elites + pins + comparison ids — exactly what

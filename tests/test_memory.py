@@ -118,6 +118,24 @@ def test_active_learner_skips_decided_pairs():
     assert all(set(p[:2]) != {"A", "B"} for p in pairs)
 
 
+def test_ask_weights_can_flip_policy_to_explore():
+    # Default (positive sim weight) asks about the SIMILAR near-twins (learn the
+    # preference function); a non-positive ask_sim_weight flips to region-separating
+    # pairs (explore). Both readings are legitimate, so the weighting is tunable.
+    slate, emb = _slate()
+    default_top = memory.select_ask_pairs(slate, emb, [], max_pairs=2)[0]
+    assert set(default_top[:2]) == {"A", "B"}
+
+    explore_top = memory.select_ask_pairs(
+        slate, emb, [], max_pairs=2, weights=(-0.5, 0.3, 0.2)
+    )[0]
+    assert set(explore_top[:2]) != {"A", "B"}
+    a, b = explore_top[:2]
+    sim = float(np.dot(np.asarray(emb[a]), np.asarray(emb[b])))
+    assert sim < 0.5  # the chosen pair is embedding-dissimilar
+    assert "region-separating" in explore_top[2]  # reason reflects the policy
+
+
 def test_active_learner_handles_tiny_slate():
     assert memory.select_ask_pairs([{"id": "x"}], {}, []) == []
 

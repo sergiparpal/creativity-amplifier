@@ -22,7 +22,14 @@ import numpy as np
 
 from .state import State
 
-# Weights for pair informativeness (similar + novel + undecided == informative).
+# Default weights for pair informativeness (similar + novel + undecided ==
+# informative). These are the **fallback defaults** for direct/library callers;
+# the ``ingest`` path resolves them from ``EngineConfig`` (per-domain overridable).
+# A POSITIVE ``W_SIM`` asks the user to compare *similar* ideas — the boundary where
+# the judge is most undecided, best for **learning the preference function**. Set it
+# to 0 or negative (via ``engine.ask_sim_weight``) to instead surface *region-
+# separating* pairs — better for **exploration**. The two readings are a deliberate
+# policy choice the value-gate does not adjudicate, so it is left tunable.
 W_SIM = 0.5
 W_UNCERTAIN = 0.3
 W_NOVELTY = 0.2
@@ -113,14 +120,21 @@ def select_ask_pairs(
     emb_by_id: Dict[str, Sequence[float]],
     comparisons: Optional[Sequence[Dict[str, Any]]] = None,
     max_pairs: int = 2,
+    weights: Optional[Tuple[float, float, float]] = None,
 ) -> List[List[Any]]:
     """Pick the most-informative A-vs-B pairs from the slate.
 
-    Informativeness rewards pairs that are (a) **similar** in embedding (a fine
-    distinction the model is unsure about → max judge-disagreement), (b) of
-    **uncertain** relative quality (close fitness), and (c) on the **novel**
-    frontier — while skipping pairs the user already decided.
+    Informativeness is a weighted sum of (a) embedding **similarity** (a fine
+    distinction the model is unsure about → max judge-disagreement), (b) **uncertain**
+    relative quality (close fitness), and (c) the **novel** frontier — skipping pairs
+    the user already decided. ``weights`` is ``(w_sim, w_uncertainty, w_novelty)``;
+    it defaults to the module constants. A non-positive ``w_sim`` flips the policy
+    from "compare similar" (learn preferences) to "compare region-separating"
+    (explore).
     """
+    w_sim, w_unc, w_nov = weights if weights is not None else (
+        W_SIM, W_UNCERTAIN, W_NOVELTY
+    )
     comparisons = comparisons or []
     decided = _compared_set(comparisons)
     n = len(slate)
@@ -144,17 +158,19 @@ def select_ask_pairs(
                 float(a.get("fitness", 1.0)) - float(b.get("fitness", 1.0))
             )
             mean_nov = 0.5 * (float(a.get("novelty", 0.0)) + float(b.get("novelty", 0.0)))
-            score = W_SIM * sim + W_UNCERTAIN * uncertainty + W_NOVELTY * mean_nov
+            score = w_sim * sim + w_unc * uncertainty + w_nov * mean_nov
             scored.append((score, i, j))
 
     scored.sort(key=lambda t: (-t[0], t[1], t[2]))
+    framing = "region-separating" if w_sim <= 0 else "similar"
     out: List[List[Any]] = []
     for score, i, j in scored[:max_pairs]:
         out.append(
             [
                 slate[i]["id"],
                 slate[j]["id"],
-                f"informative pair (score {score:.2f}): similar, undecided, on the novel frontier",
+                f"informative pair (score {score:.2f}): {framing}, undecided, "
+                f"on the novel frontier",
             ]
         )
     return out

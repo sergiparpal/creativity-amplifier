@@ -257,6 +257,16 @@ for long sessions.
 
 ## 5. Conceptual notes — document, don't necessarily change
 
+**Status:** ✅ Done. 5a: documented the precise division of labor in `CLAUDE.md`
+(the invariant section) and `docs/PAPER.md` (§4 niching) — niche *placement* on
+**every** axis runs on agent descriptors; the purity guarantee is exactly k-NN
+novelty + dedup + DPP on the lineage-distinct idea-text embedding; kept the
+descriptor-based open-axis niching deliberately (documented why). 5b: exposed the
+`select_ask_pairs` weights as config knobs (`ask_sim_weight`/`…uncertainty`/
+`…novelty`, defaults reproduce current behavior; `ask_sim_weight ≤ 0` flips
+learn-preference → explore) and documented the unresolved policy tension in
+`CLAUDE.md`/`docs/PAPER.md`.
+
 ### 5a. Open-axis placement reflects agent-authored descriptors
 
 The open-axis niche cell is computed from the embedding of the agent's

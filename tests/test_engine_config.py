@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from creativity_engine import config, embed, monitor, pipeline
+from creativity_engine import config, embed, memory, monitor, pipeline
 from creativity_engine.config import EngineConfig
 from creativity_engine.state import State
 
@@ -34,6 +34,10 @@ def test_defaults_match_module_constants():
     # dedup tau defaults to per-embedder (None), which for hash is the global default
     assert c.dedup_tau is None
     assert embed.default_dedup_tau("hash") == embed.DEFAULT_DEDUP_TAU
+    # ask-pair weights mirror the memory module fallback constants
+    assert c.ask_sim_weight == memory.W_SIM
+    assert c.ask_uncertainty_weight == memory.W_UNCERTAIN
+    assert c.ask_novelty_weight == memory.W_NOVELTY
 
 
 def test_load_defaults_and_overrides():
@@ -59,6 +63,10 @@ def test_load_defaults_and_overrides():
     assert config.load_engine_config(
         {"engine": {"state_prune_threshold": 0}}
     ).state_prune_threshold == 0
+    # ask-pair weights: override, including a negative sim weight (explore mode)
+    cfg_explore = config.load_engine_config({"engine": {"ask_sim_weight": -0.5}})
+    assert cfg_explore.ask_sim_weight == -0.5
+    assert cfg_explore.ask_novelty_weight == EngineConfig().ask_novelty_weight
 
 
 def test_example_domain_engine_overrides():
@@ -79,6 +87,8 @@ def test_example_domain_engine_overrides():
         ({"engine": {"knn_k": "x"}}, "knn_k"),
         ({"engine": {"under_generation_ratio": 1.5}}, "under_generation_ratio"),
         ({"engine": {"state_prune_threshold": -1}}, "state_prune_threshold"),
+        ({"engine": {"ask_sim_weight": 2}}, "ask_sim_weight"),
+        ({"engine": {"ask_novelty_weight": -2}}, "ask_novelty_weight"),
         ({"engine": []}, "engine"),
     ],
 )

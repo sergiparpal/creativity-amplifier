@@ -201,6 +201,14 @@ class EngineConfig:
     # ones never read again (everything but archive elites, pins, and comparison
     # ids) to bound the per-cycle whole-file rewrite cost. 0 disables pruning.
     state_prune_threshold: int = 2000
+    # active-learning pair policy (memory.select_ask_pairs). Weights of the
+    # informativeness score: embedding similarity, fitness uncertainty, novelty.
+    # Defaults reproduce the original behavior (compare *similar* ideas → learn the
+    # preference function). Set ask_sim_weight <= 0 to compare *region-separating*
+    # pairs instead (explore). Allowed range [-1, 1].
+    ask_sim_weight: float = 0.5
+    ask_uncertainty_weight: float = 0.3
+    ask_novelty_weight: float = 0.2
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -219,6 +227,9 @@ class EngineConfig:
             "monitor_min_baseline": self.monitor_min_baseline,
             "under_generation_ratio": self.under_generation_ratio,
             "state_prune_threshold": self.state_prune_threshold,
+            "ask_sim_weight": self.ask_sim_weight,
+            "ask_uncertainty_weight": self.ask_uncertainty_weight,
+            "ask_novelty_weight": self.ask_novelty_weight,
         }
 
     @classmethod
@@ -302,6 +313,15 @@ class EngineConfig:
             ),
             state_prune_threshold=non_neg_int(
                 "state_prune_threshold", base.state_prune_threshold
+            ),
+            ask_sim_weight=unit_float(
+                "ask_sim_weight", base.ask_sim_weight, lo=-1.0, hi=1.0
+            ),
+            ask_uncertainty_weight=unit_float(
+                "ask_uncertainty_weight", base.ask_uncertainty_weight, lo=-1.0, hi=1.0
+            ),
+            ask_novelty_weight=unit_float(
+                "ask_novelty_weight", base.ask_novelty_weight, lo=-1.0, hi=1.0
             ),
         )
 

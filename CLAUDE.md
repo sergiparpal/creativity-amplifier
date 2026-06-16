@@ -41,6 +41,20 @@ and any change must preserve it:
 - The **anti-collapse monitor is never bypassed** — when it flags convergence the skill raises
   diversity pressure next round; it is never removed or worked around.
 
+**What "the engine owns novelty" precisely means (and what it doesn't).** Niche *placement* on
+**every** axis is driven by the agent's `descriptor` text by design — a categorical mislabel or a
+differently-worded `mechanism` lands an idea in a different niche, changing the elite competition and
+thus the DPP pool. The open axis is **not special** here: its Voronoi cell is the embedding of the
+agent's mechanism descriptor (`_open_axis_texts`), so the agent's *word choice* influences placement
+on it just as on the categorical axes. The purity guarantee the design actually makes — and keeps —
+is narrower and load-bearing: **k-NN novelty, dedup, and the DPP kernel are all computed on the
+idea-text embedding** produced by the **independent embedder** (a different model family from Claude).
+So even where the agent's descriptors steer placement, they run through that independent geometry —
+what "leaks" is the agent's word choice, never Claude's own similarity judgment. (For stricter purity
+one *could* niche the open axis on the full idea-text embedding instead of the descriptor; we keep the
+descriptor deliberately, because it is the focused "core how" that gives the mechanism axis its
+intended semantics.)
+
 ## Install & provisioning
 
 Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
@@ -124,7 +138,14 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   pipeline/monitor module constants remain only as fallback defaults for direct callers and the
   self-test (kept in sync with `EngineConfig` by `test_engine_config`).
 - `embed.py`, `novelty.py`, `diversity.py`, `monitor.py`, `archive.py` — the math (see below).
-- `state.py`, `memory.py` — file-based persistence and preference memory.
+- `state.py`, `memory.py` — file-based persistence and preference memory. The active learner
+  (`select_ask_pairs`) scores candidate A-vs-B questions by a weighted sum of embedding
+  **similarity**, fitness **uncertainty**, and **novelty**. The default weights favor *similar*
+  pairs — the judge-disagreement boundary, best for **learning the preference function** — but that
+  is a deliberate policy, not a proven optimum (the value-gate does not test it). The two competing
+  readings (learn-preference vs. **explore** by comparing region-separating pairs) are reconciled by
+  making the weights tunable: `engine.ask_sim_weight ≤ 0` flips the policy to explore. Defaults
+  reproduce the original behavior.
 - `session.py` — per-invocation context (`Session`): bundles the `State` handle, the resolved
   preference **domain** (memory namespace), the axes **spec**, and the **embedder**, all resolved
   lazily. It centralizes the rule that the memory namespace *is* the domain of the persisted axes
