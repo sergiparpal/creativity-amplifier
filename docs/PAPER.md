@@ -94,7 +94,7 @@ The heart of the system is the `ingest` command, which runs a chain of seven sta
 - `continuous` axis → the *bin* index over its range (5 bins by default);
 - `open` axis → a frozen Voronoi cell over the *embedding* of the axis value.
 
-For the open axis —the main carrier of novelty— a `CVTNicher` provides a **data-adaptive, fit-once-then-freeze** partition: early cycles assign against deterministic cold-start centroids (random unit directions fixed by the seed), and once `OPEN_NICHE_FREEZE_FACTOR × OPEN_NICHES` mechanism embeddings have accumulated, *k*-means is fit **once** (`random_state = seed`), the centroids are persisted, and the existing archive is re-keyed onto them (merging any collapsed niches by the elite rule). It never refits afterward, so cell ids stay stable across cycles; assignment is by maximum cosine similarity. Exactly one axis may be marked `primary_novelty`. The archive keeps **at most one elite per niche**; within a niche the higher `fitness` wins (fitness coming from the judge), and ties break toward higher geometric novelty. The judge is never invoked here: geometry owns diversity and quality only ranks within an already-diverse niche.
+For the open axis —the main carrier of novelty— a `CVTNicher` provides a **data-adaptive, fit-once-then-freeze** partition: early cycles assign against deterministic cold-start centroids (random unit directions fixed by the seed), and once `OPEN_NICHE_FREEZE_FACTOR × OPEN_NICHES` (= 48) mechanism embeddings have accumulated, *k*-means is fit **once** (`random_state = seed`), the centroids are persisted, and the existing archive is re-keyed onto them (merging any collapsed niches by the elite rule). It never refits afterward, so cell ids stay stable across cycles; assignment is by maximum cosine similarity. Exactly one axis may be marked `primary_novelty`. The archive keeps **at most one elite per niche**; within a niche the higher `fitness` wins (fitness coming from the judge), and ties break toward higher geometric novelty. The judge is never invoked here: geometry owns diversity and quality only ranks within an already-diverse niche.
 
 **Geometric novelty.** The novelty of each survivor is the mean cosine distance to its *k* = 5 nearest neighbors within (existing elites ∪ other survivors). It is a pure property of where the point falls relative to others: far from its neighbors it is novel, in a crowd it is not. It is the only thing that decides "is this new?".
 
@@ -272,13 +272,14 @@ State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), 
 
 | Parameter | Value | Meaning |
 | :-- | --: | :-- |
-| `DEDUP_TAU` | 0.92 / 0.94 | near-duplicate cosine threshold (per-embedder: hash / local) |
+| `DEDUP_TAU` | 0.93 / 0.94 / 0.92 | near-duplicate cosine threshold (per-embedder: static / local / hash) |
 | `KNN_K` | 5 | neighbors for geometric novelty |
 | `OPEN_NICHES` | 24 | frozen Voronoi cells for the open axis |
-| `OPEN_NICHE_FREEZE_FACTOR` | 4 | freeze the open-axis partition once `4 × OPEN_NICHES` mechanisms accumulate |
+| `OPEN_NICHE_FREEZE_FACTOR` | 2 | freeze the open-axis partition once `2 × OPEN_NICHES` (= 48) mechanisms accumulate (~4–5 generations) |
 | `MAX_DPP_POOL` | 200 | cap on the elite *pool* for the DPP |
 | `NOVELTY_REF_CAP` | 500 | cap on the dedup/novelty reference (most-novel elites) — bounds the per-cycle O(n·m) cost |
 | `QUALITY_WEIGHT` | 0.3 | weight of the (bounded, [0.7–1.3]-clipped) judge fitness in the DPP slate |
+| `STATE_PRUNE_THRESHOLD` | 2000 | candidate-store size above which unreferenced records/embeddings are pruned (0 disables) |
 | `slate_size` | 6 | default slate size |
 | `candidates_per_generation` | 12 | candidates per generation |
 | monitor cosine threshold | 0.55 | absolute similarity fallback (until the baseline window fills) |

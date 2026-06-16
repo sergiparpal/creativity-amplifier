@@ -211,3 +211,43 @@ def test_cold_start_before_threshold_is_not_frozen(home):
     assert on.get("frozen") is False
     assert "centroids" not in on
     assert len(on["accum"]) == 10
+
+
+# --------------------------------------------------------------------------- #
+# Observability (item 4a): freeze progress is reported by ingest + metrics
+# --------------------------------------------------------------------------- #
+def test_ingest_reports_open_axis_progress_on_cold_start(home):
+    threshold = pipeline.OPEN_NICHE_FREEZE_FACTOR * pipeline.OPEN_NICHES
+    res = pipeline.ingest("prog", _candidates(10), SPEC, seed=0, home=home)
+    oa = res["open_axis"]
+    assert oa["present"] is True
+    assert oa["frozen"] is False
+    assert oa["partition"] == "cold_start"
+    assert oa["accumulated"] == 10
+    assert oa["freeze_threshold"] == threshold
+    assert 0.0 < oa["progress"] < 1.0
+    # metrics reports the same partition status.
+    assert pipeline.metrics("prog", home=home)["open_axis"]["accumulated"] == 10
+
+
+def test_open_axis_status_flips_to_frozen_after_freeze(home):
+    threshold = pipeline.OPEN_NICHE_FREEZE_FACTOR * pipeline.OPEN_NICHES
+    res = pipeline.ingest("frz", _candidates(threshold + 4), SPEC, seed=0, home=home)
+    oa = res["open_axis"]
+    assert oa["frozen"] is True
+    assert oa["partition"] == "frozen"
+    assert oa["progress"] == 1.0
+    # ...and metrics agrees after the freeze.
+    moa = pipeline.metrics("frz", home=home)["open_axis"]
+    assert moa["frozen"] is True and moa["progress"] == 1.0
+
+
+def test_open_axis_absent_when_no_open_axis(home):
+    # A spec with only a categorical axis has no open/primary novelty axis.
+    spec = {"domain": "noopen", "axes": [{"name": "kind", "type": "categorical"}]}
+    res = pipeline.ingest(
+        "noopen",
+        [{"id": "c0", "text": "an idea", "descriptor": {"kind": "a"}}],
+        spec, seed=0, home=home,
+    )
+    assert res["open_axis"] == {"present": False}

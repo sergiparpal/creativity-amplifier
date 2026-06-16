@@ -204,6 +204,17 @@ concurrent sessions.
 
 ## 4. Engine correctness / cleanup
 
+**Status:** ✅ Done — all three. 4a: lowered `open_niche_freeze_factor` 4→2
+(threshold 96→48, ~4–5 generations) so the data-adaptive partition actually
+activates; `ingest`/`metrics` now expose an `open_axis` progress block; cold-start
+validated good under the real embedder (8/12 niches), and the benign sklearn
+"fewer distinct clusters than k" warning is silenced at the fit. 4b: `api` is
+honestly documented as a stub/extension point everywhere (README/CLAUDE/loop/
+embed.py) — chose the downgrade path over wiring a backend. 4c: `ingest` prunes
+candidate records/embeddings nothing reads again once the store exceeds
+`engine.state_prune_threshold` (default 2000, 0 disables), keeping exactly elites +
+pins + comparison ids, so it's output-neutral.
+
 ### 4a. The open-axis freeze threshold is almost never reached
 
 **Why:** the data-adaptive open-axis partition (the "fit-once-then-freeze"

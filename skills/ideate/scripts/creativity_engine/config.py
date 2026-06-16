@@ -174,7 +174,11 @@ class EngineConfig:
 
     # niching
     open_niches: int = 24
-    open_niche_freeze_factor: int = 4
+    # freeze the open-axis partition once freeze_factor * open_niches survivor
+    # mechanisms accumulate; 2 => 48 (~4-5 generations) so it activates in a real
+    # session while keeping the k-means fit meaningful. See pipeline.py for the
+    # rationale; cold-start runs until then.
+    open_niche_freeze_factor: int = 2
     # novelty / dedup
     knn_k: int = 5
     dedup_tau: Optional[float] = None
@@ -193,6 +197,10 @@ class EngineConfig:
     # fewer than this fraction of ``candidates_per_generation`` to ingest (the agent
     # may be over-prefiltering and cutting variety under cover of "off-brief").
     under_generation_ratio: float = 0.6
+    # state hygiene: once the candidate store exceeds this many records, drop the
+    # ones never read again (everything but archive elites, pins, and comparison
+    # ids) to bound the per-cycle whole-file rewrite cost. 0 disables pruning.
+    state_prune_threshold: int = 2000
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -210,6 +218,7 @@ class EngineConfig:
             "monitor_window": self.monitor_window,
             "monitor_min_baseline": self.monitor_min_baseline,
             "under_generation_ratio": self.under_generation_ratio,
+            "state_prune_threshold": self.state_prune_threshold,
         }
 
     @classmethod
@@ -232,6 +241,16 @@ class EngineConfig:
                 raise ConfigError(f"engine.{key} must be an integer")
             if v < 1:
                 raise ConfigError(f"engine.{key} must be >= 1")
+            return v
+
+        def non_neg_int(key: str, default: int) -> int:
+            v = eng.get(key, default)
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise ConfigError(f"engine.{key} must be an integer")
+            if v < 0:
+                raise ConfigError(f"engine.{key} must be >= 0")
             return v
 
         def unit_float(key: str, default: float, lo: float = 0.0,
@@ -280,6 +299,9 @@ class EngineConfig:
             ),
             under_generation_ratio=unit_float(
                 "under_generation_ratio", base.under_generation_ratio
+            ),
+            state_prune_threshold=non_neg_int(
+                "state_prune_threshold", base.state_prune_threshold
             ),
         )
 

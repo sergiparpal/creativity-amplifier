@@ -43,7 +43,12 @@ KNN_K = 5
 # have accumulated, then a one-time k-means fit freezes the cells (see
 # ``_accumulate_and_maybe_freeze``).
 OPEN_NICHES = 24
-OPEN_NICHE_FREEZE_FACTOR = 4
+# freeze after freeze_factor * open_niches survivor mechanisms accumulate. At 2 this
+# is 48 (~4-5 generations of 12) so the data-adaptive partition actually activates in
+# a realistic session, while keeping >=2 samples/centroid for a meaningful k-means
+# fit. Most short sessions still never reach it and run on the (validated) cold-start
+# partition; `ingest`/`metrics` expose accumulation progress so this is observable.
+OPEN_NICHE_FREEZE_FACTOR = 2
 MAX_DPP_POOL = 200
 # Cap on the dedup/novelty reference set (the most-novel elites). Dedup and k-NN
 # novelty run against the archive elites every cycle (O(n·m)); without a cap this
@@ -289,6 +294,69 @@ def _accumulate_and_maybe_freeze(
     frozen = nicher.to_dict()
     frozen["frozen"] = True
     state.write_open_nicher(frozen)
+
+
+def _open_axis_status(
+    state: State, spec: AxesSpec, open_niches: int, freeze_factor: int
+) -> Dict[str, Any]:
+    """Progress of the data-adaptive open-axis partition toward its one-time freeze.
+
+    Surfaced by ``ingest`` and ``metrics`` so the fit-once-then-freeze feature is
+    observable instead of silent: most short sessions never reach the threshold and
+    run entirely on the deterministic cold-start partition (validated good on its
+    own), but whether/when a session crosses into the frozen partition should be
+    visible. Returns ``{"present": False}`` when the spec has no open axis.
+    """
+    if spec.primary_axis is None:
+        return {"present": False}
+    threshold = freeze_factor * open_niches
+    on = state.read_open_nicher() or {}
+    if on.get("frozen"):
+        return {
+            "present": True,
+            "frozen": True,
+            "partition": "frozen",
+            "accumulated": threshold,
+            "freeze_threshold": threshold,
+            "progress": 1.0,
+        }
+    accumulated = len(on.get("accum", []))
+    return {
+        "present": True,
+        "frozen": False,
+        "partition": "cold_start",
+        "accumulated": accumulated,
+        "freeze_threshold": threshold,
+        "progress": round(min(accumulated / threshold, 1.0), 3) if threshold else 1.0,
+    }
+
+
+def _maybe_prune_state(
+    cand_store: Dict[str, Any],
+    stored_emb: Dict[str, List[float]],
+    keep_ids: set,
+    threshold: int,
+) -> int:
+    """Drop candidate records + embeddings that are never read again, in place.
+
+    Only runs once the store exceeds ``threshold`` (``0`` disables it). The keep set
+    must be everything still referenced after the cycle: archive **elites** (dedup /
+    novelty / slate), **pins** (parents), and the ids in preference **comparisons**
+    (recall's learned ``preferred_values``). Everything else is dead weight — kept
+    only as display history — so pruning it bounds the O(n) whole-file rewrite cost
+    of long sessions without changing any engine output. Returns the count pruned.
+    """
+    if threshold <= 0 or len(cand_store) <= threshold:
+        return 0
+    drop = [cid for cid in cand_store if cid not in keep_ids]
+    for cid in drop:
+        cand_store.pop(cid, None)
+        stored_emb.pop(cid, None)
+    # stored_emb ids are a subset of cand_store ids in practice, but sweep any
+    # orphaned (non-kept) embeddings too so the two stores stay aligned.
+    for cid in [c for c in stored_emb if c not in keep_ids and c not in cand_store]:
+        stored_emb.pop(cid, None)
+    return len(drop)
 
 
 def _empty_cycle(arc: "archive_mod.Archive") -> Dict[str, Any]:
@@ -565,12 +633,25 @@ def ingest(
     comparisons = state.read_comparisons(domain)
     ask_pairs = memory.select_ask_pairs(slate, stored_emb, comparisons, max_pairs=2)
 
+    # State hygiene (long sessions): drop candidate records/embeddings nothing reads
+    # again. Keep set = archive elites + pins + comparison ids — exactly what
+    # dedup/novelty/slate, parents, and recall consume — so output is unchanged.
+    keep_ids = set(arc.elite_ids())
+    keep_ids.update(state.read_pins(domain))
+    for ev in comparisons:
+        if ev.get("type") == "comparison":
+            keep_ids.update(i for i in (ev.get("winner"), ev.get("loser")) if i)
+    _maybe_prune_state(cand_store, stored_emb, keep_ids, econfig.state_prune_threshold)
+
     _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig)
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,
         "monitor": mon,
         "parents": slate_ids,
+        "open_axis": _open_axis_status(
+            state, spec, econfig.open_niches, econfig.open_niche_freeze_factor
+        ),
     }
 
 
@@ -588,11 +669,19 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     dim = len(next(iter(stored_emb.values()))) if stored_emb else 1
     elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=dim)
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
+    # Open-axis freeze progress from the persisted engine knobs (fall back to the
+    # module defaults for older projects whose meta predates the engine block).
+    eng = sess.state.read_meta().get("engine", {})
+    open_niches = int(eng.get("open_niches", OPEN_NICHES))
+    freeze_factor = int(eng.get("open_niche_freeze_factor", OPEN_NICHE_FREEZE_FACTOR))
     return {
         "entropy": mon["entropy"],
         "mean_cosine": mon["mean_cosine"],
         "coverage": mon["coverage"],
         "n": len(elite_ids),
+        "open_axis": _open_axis_status(
+            sess.state, sess.spec, open_niches, freeze_factor
+        ),
     }
 
 

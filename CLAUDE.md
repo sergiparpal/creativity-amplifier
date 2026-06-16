@@ -108,7 +108,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor (one cycle) |
 | `remember` | append a comparison/pin to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
-| `metrics` | archive health (entropy, mean cosine, coverage, n) |
+| `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
 | `selftest` | full loop with stubbed LLM + human; value gate + collapse reversal |
 
 ## Architecture
@@ -162,11 +162,17 @@ the calibration window; `SKILL.md`/`loop.md` tell the agent to generate more / p
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
 the axis value (`CVTNicher`). The open-axis partition is **data-adaptive (fit-once-then-freeze)**:
 early cycles use deterministic cold-start centroids seeded by `--seed`; once `OPEN_NICHE_FREEZE_FACTOR
-* OPEN_NICHES` mechanism embeddings have accumulated, k-means is fit **once** (`KMeans(random_state=
-seed)`), the centroids are persisted (`open_nicher.json`), and the archive is **re-keyed** onto them
-(`Archive.rekey_open_axis`, merging collapsed niches by the elite rule). It never refits after
-freezing, so niche ids stay stable. Exactly one axis may be the `primary_novelty` "open" axis (the
-novelty carrier). Within a niche, higher `fitness` wins; ties break toward higher novelty.
+* OPEN_NICHES` (now **2 × 24 = 48**, ~4–5 generations — lowered from 4× so the data-adaptive partition
+actually activates in a realistic session) mechanism embeddings have accumulated, k-means is fit
+**once** (`KMeans(random_state=seed)`, with the benign "fewer distinct clusters than k" warning
+silenced — clustered idea embeddings legitimately under-fill the partition), the centroids are
+persisted (`open_nicher.json`), and the archive is **re-keyed** onto them (`Archive.rekey_open_axis`,
+merging collapsed niches by the elite rule). It never refits after freezing, so niche ids stay stable.
+Exactly one axis may be the `primary_novelty` "open" axis (the novelty carrier). Within a niche, higher
+`fitness` wins; ties break toward higher novelty. Most short sessions never reach the threshold and run
+entirely on the cold-start partition (validated good under the real embedder), so `ingest`/`metrics`
+surface an **`open_axis`** progress block (`accumulated` / `freeze_threshold` / `progress` / `frozen`)
+to make the otherwise-silent freeze observable.
 
 **Embedders** (`embed.py`), selected by `CREATIVITY_EMBEDDER` (`static` default):
 - `static` — model2vec `minishlab/potion-multilingual-128M`, **256-dim, 101 languages**, CPU,
@@ -200,7 +206,10 @@ settings), `axes.json` (the resolved axes geometry — kept separate from settin
 so switching domains keeps preferences separate. A per-project `tmp/` scratch dir (created by
 `State.ensure`, surfaced by the `paths` command) holds the skill's hand-off files (`axes.json`,
 `candidates.json`, `event.json`) inside the state home so they never clutter the user's cwd or
-collide across concurrent sessions.
+collide across concurrent sessions. `candidates.json`/`embeddings.json` are rewritten whole each
+cycle; for long sessions `ingest` **prunes** records nothing reads again once the store exceeds
+`engine.state_prune_threshold` (default 2000, 0 disables) — keeping exactly archive elites, pins, and
+comparison ids, so the pruning is output-neutral.
 
 **The self-test is the correctness contract** (`selftest.py`). It enforces a **value gate** — the
 engine's diverse slate must beat a single-shot baseline on mean pairwise distance, Vendi score, and

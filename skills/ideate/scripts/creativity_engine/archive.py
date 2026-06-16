@@ -86,13 +86,23 @@ class CVTNicher:
         keeps the L2-normalized cluster centers as the frozen centroids. ``k`` is
         clamped to the number of available points.
         """
+        import warnings
+
         from sklearn.cluster import KMeans
+        from sklearn.exceptions import ConvergenceWarning
 
         vecs = np.asarray(vecs, dtype=np.float64)
         n = int(vecs.shape[0])
         k_eff = max(1, min(int(k), n))
         km = KMeans(n_clusters=k_eff, random_state=int(seed), n_init=10)
-        km.fit(vecs)
+        # Accumulated idea embeddings are often clustered into fewer than k natural
+        # groups (near-duplicate mechanisms, a low-diversity session). KMeans then
+        # finds fewer distinct centers than requested and warns; that's expected and
+        # harmless here — the surplus centroids sit in sparse regions and assignment
+        # still works — so silence just that warning rather than spam the operator.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=ConvergenceWarning)
+            km.fit(vecs)
         return cls(dim=int(vecs.shape[1]), k=k_eff, seed=seed,
                    centroids=km.cluster_centers_)
 

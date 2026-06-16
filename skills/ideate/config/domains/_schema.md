@@ -44,7 +44,7 @@ the natural scale of similarity.
 | key | default | meaning |
 | :-- | --: | :-- |
 | `open_niches` | 24 | frozen Voronoi cells for the open (mechanism) axis |
-| `open_niche_freeze_factor` | 4 | freeze the open-axis partition once `factor × open_niches` mechanisms accumulate |
+| `open_niche_freeze_factor` | 2 | freeze the open-axis partition once `factor × open_niches` (= 48) mechanisms accumulate |
 | `knn_k` | 5 | neighbours for geometric novelty |
 | `dedup_tau` | `null` | near-duplicate cosine threshold; `null` ⇒ per-embedder default |
 | `novelty_ref_cap` | 500 | cap on the dedup/novelty reference (most-novel elites) |
@@ -56,6 +56,8 @@ the natural scale of similarity.
 | `monitor_cos_ceiling` | 0.80 | absolute safety ceiling for the similarity flag |
 | `monitor_window` | 5 | rolling-baseline size (recent generations' mean cosine) |
 | `monitor_min_baseline` | 2 | samples needed before the relative rule applies |
+| `under_generation_ratio` | 0.6 | prefilter guard: flag `under_generation` below this fraction of the per-gen target |
+| `state_prune_threshold` | 2000 | candidate-store size above which unreferenced records/embeddings are pruned (0 disables) |
 
 ## Axis types
 

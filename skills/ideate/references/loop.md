@@ -182,7 +182,9 @@ Returns:
   "monitor": {"collapsing": false, "mean_cosine": 0.18, "entropy": 2.1,
               "normalized_entropy": 0.88, "coverage": 9, "n": 12, "reasons": [],
               "submitted": 12, "target_candidates": 12, "under_generation": false},
-  "parents": ["id", "..."]
+  "parents": ["id", "..."],
+  "open_axis": {"present": true, "frozen": false, "partition": "cold_start",
+                "accumulated": 12, "freeze_threshold": 48, "progress": 0.25}
 }
 ```
 
@@ -190,6 +192,11 @@ Returns:
 the engine sees only the candidates you submitted, so if you prefiltered away so many
 that `under_generation` is `true`, you may be cutting variety under cover of validity
 (see step 7).
+
+`open_axis` is **observability only** (no action needed): it reports the data-adaptive
+mechanism partition's progress toward its one-time freeze. Most sessions stay on the
+`cold_start` partition (good on its own); it flips to `frozen` once `accumulated`
+reaches `freeze_threshold`.
 
 The engine embedded survivors with a **different model family** from you,
 deduped near-duplicates, placed each into a MAP-Elites niche over the resolved
@@ -236,7 +243,8 @@ ENGINE parents --project PROJECT --k 4 --seed 7
 
 Loop back to step 2 with those parents, or stop when the user is satisfied. At any
 time, `ENGINE metrics --project PROJECT` reports `{entropy, mean_cosine,
-coverage, n}` for the archive.
+coverage, n, open_axis}` for the archive (`open_axis` = mechanism-partition freeze
+progress).
 
 ---
 

@@ -51,6 +51,14 @@ def test_load_defaults_and_overrides():
     assert config.load_engine_config(
         {"engine": {"under_generation_ratio": 0.25}}
     ).under_generation_ratio == 0.25
+    # state-prune threshold: default, override, and 0 (disabled) is valid
+    assert EngineConfig().state_prune_threshold == 2000
+    assert config.load_engine_config(
+        {"engine": {"state_prune_threshold": 50}}
+    ).state_prune_threshold == 50
+    assert config.load_engine_config(
+        {"engine": {"state_prune_threshold": 0}}
+    ).state_prune_threshold == 0
 
 
 def test_example_domain_engine_overrides():
@@ -70,6 +78,7 @@ def test_example_domain_engine_overrides():
         ({"engine": {"dedup_tau": 1.5}}, "dedup_tau"),
         ({"engine": {"knn_k": "x"}}, "knn_k"),
         ({"engine": {"under_generation_ratio": 1.5}}, "under_generation_ratio"),
+        ({"engine": {"state_prune_threshold": -1}}, "state_prune_threshold"),
         ({"engine": []}, "engine"),
     ],
 )
