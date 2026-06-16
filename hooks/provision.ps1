@@ -1,12 +1,12 @@
-# SessionStart hook (Windows PowerShell — for native Windows without Git Bash).
+# SessionStart launcher (Windows PowerShell — for native Windows).
 #
 # Thin launcher: find a Python >= 3.11 and hand off to bootstrap.py, which does the
 # real, idempotent, concurrency-safe provisioning in a detached background process.
-# Registered with "async": true in hooks/hooks.json, so it never blocks session
-# startup or the desktop UI. All the heavy logic lives in bootstrap.py.
+# All the heavy logic lives in bootstrap.py.
 #
-# On macOS/Linux this command is handed to `sh`, where `powershell` is absent, so it
-# no-ops harmlessly; provision.sh covers those platforms.
+# Invoked by hooks/provision.mjs (the cross-platform SessionStart dispatcher, run
+# with "async": true) on native Windows; provision.sh covers POSIX platforms. Also
+# runnable directly by a developer.
 $ErrorActionPreference = 'SilentlyContinue'
 
 $root = $env:CLAUDE_PLUGIN_ROOT

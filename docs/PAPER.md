@@ -1,7 +1,7 @@
 # A reference architecture for amplifying human creativity: variation by an LLM agent, geometric diversity, and human selection
 
 **Sergi Parpal**
-Code: <https://github.com/sergiparpal/creativity-amplifier> · License: GPL-3.0
+Code: <https://github.com/sergiparpal/creativity-amplifier> · License: MIT
 
 ---
 

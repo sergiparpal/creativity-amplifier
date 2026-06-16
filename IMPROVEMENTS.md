@@ -307,6 +307,13 @@ parents next generation? — and/or expose the weighting as a config knob.
 
 ## 6. Minors
 
+**Status:** ✅ Done — all three. Dual-hook noise: replaced the two launchers with a
+single Node dispatcher (`hooks/provision.mjs`) that detects the OS and invokes only
+the matching launcher. CHANGELOG + version: added `CHANGELOG.md` and bumped to
+**0.2.0** (synced across `plugin.json`, `pyproject.toml`, engine `__version__`).
+License: changed **GPL-3.0 → MIT** (user decision) across `LICENSE`, `plugin.json`,
+`README`, `docs/PAPER.md`.
+
 - **Dual hook noise:** `hooks.json` launches both `sh` and `powershell` on every
   `SessionStart`; on the "wrong" OS one always fails (harmless under `async`, but
   noisy in hook logs).

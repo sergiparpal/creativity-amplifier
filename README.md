@@ -282,4 +282,4 @@ novelty search), and DPP selection — is written up in [`docs/PAPER.md`](docs/P
 
 ## License
 
-GNU GPL v3 — see `LICENSE`.
+MIT — see `LICENSE`.

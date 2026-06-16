@@ -1,13 +1,13 @@
 #!/bin/sh
-# SessionStart hook (POSIX: sh / Git Bash / WSL / macOS / Linux).
+# SessionStart launcher (POSIX: sh / Git Bash / WSL / macOS / Linux).
 #
 # Thin launcher: find a Python >= 3.11 and hand off to bootstrap.py, which does the
 # real, idempotent, concurrency-safe provisioning in a detached background process.
-# Registered with "async": true in hooks/hooks.json, so it never blocks session
-# startup or the desktop UI. All the heavy logic lives in bootstrap.py.
+# All the heavy logic lives in bootstrap.py.
 #
-# On Windows-without-Git-Bash this command runs under PowerShell instead and `sh`
-# is absent, so it no-ops harmlessly; provision.ps1 covers that case.
+# Invoked by hooks/provision.mjs (the cross-platform SessionStart dispatcher, run
+# with "async": true) on non-Windows platforms; provision.ps1 covers native Windows.
+# Also runnable directly by a developer.
 set -u
 
 ROOT="${CLAUDE_PLUGIN_ROOT:-}"
