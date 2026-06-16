@@ -84,9 +84,9 @@ The split of signals by component is the axis of the design: the **framing** (th
 
 The heart of the system is the `ingest` command, which runs a chain of seven stages. All embeddings are L2-normalized rows, so cosine similarity is a dot product.
 
-**Embedding with a distinct lineage.** The survivors of the prefilter are embedded with a model deliberately from **another lineage** than the agent: `BAAI/bge-small-en-v1.5` on CPU by default. The choice is intentional: "what is novel" should not be judged by the same lineage that generated the ideas. A deterministic hash embedder (no downloads) serves the tests and the offline *self-test*; an API embedder is left as a planned connector.
+**Embedding with a distinct lineage.** The survivors of the prefilter are embedded with a model deliberately from **another lineage** than the agent: the multilingual static model `minishlab/potion-multilingual-128M` (model2vec, 256-dim, 101 languages, numpy-only inference) on CPU by default, with the English-only `BAAI/bge-small-en-v1.5` available as a higher-fidelity opt-in. The choice is intentional: "what is novel" should not be judged by the same lineage that generated the ideas — and a multilingual default keeps that hedge intact across languages. A deterministic hash embedder (no downloads) serves the tests and the offline *self-test*; an API embedder is left as a planned connector.
 
-**Deduplication.** Greedy near-duplicate removal: a row is dropped if its cosine similarity to any already-kept row (or to the archive's existing elites) exceeds a **per-embedder threshold** τ — 0.92 for the hash fixture, 0.94 for the semantic `bge` model, whose sentence-transformer cosines run higher and so demand a higher bar. This avoids wasting niches on trivial rephrasings without touching real variety.
+**Deduplication.** Greedy near-duplicate removal: a row is dropped if its cosine similarity to any already-kept row (or to the archive's existing elites) exceeds a **per-embedder threshold** τ — 0.92 for the hash fixture, 0.93 for the static `potion` default, and 0.94 for the semantic `bge` model, calibrated per family because their cosine scales differ. This avoids wasting niches on trivial rephrasings without touching real variety.
 
 **MAP-Elites niching.** Each candidate is placed into a **niche**, a discrete cell of descriptor space formed by combining one *bucket* per axis:
 
@@ -134,7 +134,7 @@ To these are added three structural guarantees that are not tests but properties
 
 ## 7. Evaluation
 
-We report the `selftest` run with the deterministic hash embedder —a lexical, reproducible, download-free fixture— and the test suite. The figures should be read as evidence that the **mechanism** works and that DPP **selection** contributes independently of the generator; absolute values with a semantic embedder (`bge-small`) would differ, but the fixture isolates the architecture's effect from model noise.
+We report the `selftest` run with the deterministic hash embedder —a lexical, reproducible, download-free fixture— and the test suite. The figures should be read as evidence that the **mechanism** works and that DPP **selection** contributes independently of the generator; absolute values with a semantic embedder (the default `potion` static model, or the opt-in `bge-small`) would differ, but the fixture isolates the architecture's effect from model noise.
 
 **Value gate — engine vs single-shot:**
 

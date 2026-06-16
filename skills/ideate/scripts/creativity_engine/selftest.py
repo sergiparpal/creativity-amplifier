@@ -12,8 +12,8 @@ domain-neutral brief + generic axes and then proves two things:
 * **Induced-collapse reversal** — a samey generation trips the monitor, and once
   diversity pressure is raised the next generation recovers.
 * **Live semantic check** (``--live`` only) — a paraphrase is more similar than an
-  unrelated sentence under the real embedder; skipped cleanly when
-  sentence-transformers isn't installed.
+  unrelated sentence under the real default embedder (the torch-free multilingual
+  ``static`` model); skipped cleanly when that embedder can't be built/downloaded.
 
 The stubbed LLM is a canned candidate generator; the stubbed human auto-picks the
 highest-novelty idea in each slate.
@@ -267,20 +267,20 @@ def _live_semantic_check(live: bool) -> Dict[str, Any]:
     """Under the real embedder, a paraphrase must beat an unrelated sentence.
 
     Only runs on a ``--live`` invocation, and **skips cleanly** (without failing
-    the self-test) when sentence-transformers isn't installed.
+    the self-test) when the live embedder can't be built — e.g. its package is
+    missing or the model weights can't be downloaded offline.
     """
     if not live:
         return {"ran": False, "skipped": True, "reason": "not a --live run"}
     try:
-        import sentence_transformers  # noqa: F401
+        emb = embed.get_embedder()  # the live default (static), set by run()
+        a = emb.embed(["a quiet library for focused study"])[0]
     except Exception as exc:  # pragma: no cover - depends on the environment
         return {
             "ran": False,
             "skipped": True,
-            "reason": f"sentence-transformers not installed ({exc})",
+            "reason": f"live embedder unavailable ({exc})",
         }
-    emb = embed.get_embedder("local")
-    a = emb.embed(["a quiet library for focused study"])[0]
     para = emb.embed(["a calm reading room for concentrated work"])[0]
     unrel = emb.embed(["an explosive monster-truck demolition derby"])[0]
     sim_para = float(np.dot(a, para))
@@ -354,7 +354,9 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
     # reset on both ends so neither the self-test nor the caller inherits a stale
     # embedder built under the other's setting.
     prev_embedder = os.environ.get(embed.ENV_VAR)
-    os.environ[embed.ENV_VAR] = "local" if live else "hash"
+    # A live run exercises the real default embedder (the torch-free multilingual
+    # 'static' model); non-live stays on the deterministic, download-free 'hash'.
+    os.environ[embed.ENV_VAR] = embed.DEFAULT_PROVIDER if live else "hash"
     embed.reset_cache()
     try:
         spec = config.load_generic_axes()
@@ -416,7 +418,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             "live_semantic": semantic,
             "state_files_written": written,
             "cycles": SELFTEST_CYCLES,
-            "embedder": "local" if live else "hash",
+            "embedder": embed.DEFAULT_PROVIDER if live else "hash",
         }
     finally:
         if prev_embedder is None:

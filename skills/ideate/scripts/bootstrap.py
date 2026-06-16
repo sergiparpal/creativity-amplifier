@@ -10,12 +10,14 @@ invoked three ways, all idempotent and safe to re-run:
   before the background provision has finished (graceful catch-up);
 * by a developer from a shell (``python bootstrap.py`` or ``bash setup.sh``).
 
-What it does (full semantic stack by default):
+What it does (torch-free multilingual stack by default):
 
 * creates a venv (``uv venv`` if ``uv`` is on PATH, else stdlib ``venv``);
-* installs ``requirements.txt`` (sentence-transformers / numpy / scikit-learn /
-  pyyaml — the **local** ``BAAI/bge-small-en-v1.5`` embedder is the default) plus
-  the ``creativity_engine`` package (``uv pip`` if available, else ``pip``);
+* installs ``requirements.txt`` (model2vec / numpy / scikit-learn / pyyaml — the
+  **static** ``minishlab/potion-multilingual-128M`` embedder is the default, ~120 MB
+  and numpy-only at inference; the heavier ``local`` bge / sentence-transformers
+  embedder is opt-in via ``requirements-local.txt``) plus the ``creativity_engine``
+  package (``uv pip`` if available, else ``pip``);
 * records the resolved venv interpreter path in ``<venv>/engine-python.txt`` so the
   skill can find it on any OS without hard-coding ``bin/python`` vs
   ``Scripts\\python.exe``.

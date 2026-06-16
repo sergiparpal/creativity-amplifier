@@ -58,6 +58,13 @@ download in any job.
 
 ## 2. Lightweight + multilingual embedder (biggest user-facing win)
 
+**Status:** ✅ Done — `static` (`model2vec` / `potion-multilingual-128M`, 256-dim,
+101 langs) is the new default in `embed.py`; `local` (bge) is opt-in via
+`requirements-local.txt`; dedup τ calibrated to `0.93`. Verified in a clean venv:
+no torch, real EN+ES inference is numpy-only, a Spanish brief dedups/niches sanely
+(9→8, 8 niches, no false collapse), and `selftest` stays green on `hash`. Docs +
+migration caveat updated across README/CLAUDE/PAPER/loop.
+
 ### The two problems it solves at once
 
 1. **Monolingual geometry.** The default `local` embedder is

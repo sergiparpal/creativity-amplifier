@@ -42,11 +42,13 @@ the foreground (idempotent; waits for any in-progress background provision):
 ```
 
 `bootstrap.py` creates the venv (using `uv` if it is on PATH, else `python -m venv`)
-and installs deps — the **local** CPU embedder (`BAAI/bge-small-en-v1.5`, no API key)
-by default. Re-read the pointer afterwards. If it still cannot build the venv (e.g.
-Python 3.11+ is missing), relay the printed error verbatim and stop — it is
-actionable. If the user wants a hosted embedder instead, they set
-`CREATIVITY_EMBEDDER=api` plus the provider env vars before launching.
+and installs deps — the **static** multilingual CPU embedder
+(`minishlab/potion-multilingual-128M`, no API key, ~120 MB, torch-free) by default.
+Re-read the pointer afterwards. If it still cannot build the venv (e.g. Python 3.11+
+is missing), relay the printed error verbatim and stop — it is actionable. For the
+higher-fidelity English-only embedder, the user installs `requirements-local.txt` and
+sets `CREATIVITY_EMBEDDER=local`; a hosted embedder is `CREATIVITY_EMBEDDER=api` plus
+provider env vars (a stub until wired up).
 
 ---
 

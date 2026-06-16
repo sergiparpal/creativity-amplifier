@@ -1,19 +1,30 @@
 """Pluggable text embeddings + near-duplicate suppression.
 
-Three providers, selected by the ``CREATIVITY_EMBEDDER`` environment variable:
+Four providers, selected by the ``CREATIVITY_EMBEDDER`` environment variable:
 
+* ``static`` — model2vec ``minishlab/potion-multilingual-128M`` (256-dim, **101
+  languages**, distilled from ``BAAI/bge-m3``, MIT). Static embeddings, so
+  **inference needs only numpy — no torch**, and the weights are ~120 MB (vs.
+  ~2 GB for the torch stack). A **different model family** from the agent →
+  satisfies the lineage hedge. This is the **default** for real runs; lazily
+  downloaded on first use.
+* ``local`` — sentence-transformers ``BAAI/bge-small-en-v1.5`` (CPU, ~33M params,
+  384-dim, **English-only**). The opt-in **high-fidelity** option; needs the
+  torch stack (``pip install -r requirements-local.txt``). Lazily downloaded.
 * ``hash``  — deterministic char-n-gram hashing vectorizer (no downloads). Used
   by the test suite and non-live ``selftest``. Lexically similar text → similar
   vectors, so dedup is meaningful.
-* ``local`` — sentence-transformers ``BAAI/bge-small-en-v1.5`` (CPU, ~33M params,
-  a **different model family** from the agent → satisfies the lineage hedge).
-  This is the default for real runs. Lazily downloaded on first use.
 * ``api``   — a stub for a hosted provider (Voyage/Cohere/OpenAI), selected via
   env so callers never change. Constructing it is cheap; embedding raises until
   wired up.
 
 All embedders return an ``(n, d)`` float32 array of **L2-normalized** rows, so
 cosine similarity is a plain dot product.
+
+Note: ``static`` (256-dim) and ``local`` (384-dim) produce different-width,
+incompatible geometries; ``pipeline._guard_embedding_dim`` refuses to mix them
+within one project, so switching the default is breaking for projects persisted
+under the old default (re-embed, or pin ``CREATIVITY_EMBEDDER=local``).
 """
 
 from __future__ import annotations
@@ -24,7 +35,8 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 
 ENV_VAR = "CREATIVITY_EMBEDDER"
-DEFAULT_PROVIDER = "local"
+DEFAULT_PROVIDER = "static"
+DEFAULT_STATIC_MODEL = "minishlab/potion-multilingual-128M"
 DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
 HASH_DIM = 512
 
@@ -35,9 +47,13 @@ HASH_DIM = 512
 # default.
 DEFAULT_DEDUP_TAU = 0.92
 DEDUP_TAU_BY_EMBEDDER = {
-    "hash": 0.92,   # char-n-gram cosines: near-dupes cluster ~0.92+
-    "local": 0.94,  # sentence-transformer cosines run higher; raise the bar
-    "api": 0.92,    # unknown backend: conservative default
+    "hash": 0.92,    # char-n-gram cosines: near-dupes cluster ~0.92+
+    "static": 0.93,  # potion (model2vec): trivial restatements ~0.96-0.99 EN/ES,
+                     # genuine synonym variations ~0.86, distinct ideas <=0.43 —
+                     # 0.93 drops the former, keeps the latter (calibrated on a
+                     # near-dup/distinct EN+ES sample).
+    "local": 0.94,   # sentence-transformer cosines run higher; raise the bar
+    "api": 0.92,     # unknown backend: conservative default
 }
 
 
@@ -98,6 +114,35 @@ class HashingEmbedder(Embedder):
 
     def _embed_raw(self, texts: List[str]) -> np.ndarray:
         return self._vec.transform(texts).toarray()
+
+
+class StaticEmbedder(Embedder):
+    """model2vec static embedder (lazy model load).
+
+    Static token embeddings averaged per text, so **inference needs only numpy**
+    (no torch). The default real-run embedder: multilingual and ~120 MB on disk.
+    """
+
+    name = "static"
+
+    def __init__(self, model_name: str = DEFAULT_STATIC_MODEL):
+        self.model_name = model_name
+        self._model = None
+        self.dim = 0
+
+    def _ensure(self):
+        if self._model is None:
+            from model2vec import StaticModel
+
+            self._model = StaticModel.from_pretrained(self.model_name)
+            self.dim = int(self._model.dim)
+        return self._model
+
+    def _embed_raw(self, texts: List[str]) -> np.ndarray:
+        model = self._ensure()
+        # StaticModel.encode already returns a float32 ndarray; the base class
+        # L2-normalizes, so we only need the raw rows here.
+        return np.asarray(model.encode(list(texts)), dtype=np.float32)
 
 
 class LocalEmbedder(Embedder):
@@ -164,15 +209,17 @@ def get_embedder(provider: Optional[str] = None) -> Embedder:
     provider = (provider or os.environ.get(ENV_VAR) or DEFAULT_PROVIDER).strip().lower()
     if provider in _CACHE:
         return _CACHE[provider]
-    if provider == "hash":
-        emb: Embedder = HashingEmbedder()
+    if provider == "static":
+        emb: Embedder = StaticEmbedder()
+    elif provider == "hash":
+        emb = HashingEmbedder()
     elif provider == "local":
         emb = LocalEmbedder()
     elif provider == "api":
         emb = APIEmbedder()
     else:
         raise ValueError(
-            f"unknown embedder provider {provider!r}; expected hash|local|api"
+            f"unknown embedder provider {provider!r}; expected static|hash|local|api"
         )
     _CACHE[provider] = emb
     return emb

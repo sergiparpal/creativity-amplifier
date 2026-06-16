@@ -18,10 +18,12 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   (weight 0.3, fitness clipped to a [0.7, 1.3] multiplier) — so it can never
   prune variety or collapse the slate's diversity, and **you** remain the
   final selector.
-- **A different embedding family from the agent.** The local embedder is
-  `sentence-transformers` (`BAAI/bge-small-en-v1.5`, CPU) — a different model
-  family from Claude — so "what's novel" isn't judged by the same lineage that
-  generated the ideas.
+- **A different embedding family from the agent.** The default embedder is
+  `model2vec` (`minishlab/potion-multilingual-128M`, CPU) — a different model
+  family from Claude, **multilingual (101 languages)**, and torch-free — so
+  "what's novel" isn't judged by the same lineage that generated the ideas, in
+  any language. A higher-fidelity English-only `BAAI/bge-small-en-v1.5` embedder
+  is available as an opt-in.
 - **An anti-collapse monitor that's never bypassed.** Shannon entropy over niche
   occupancy + mean pairwise cosine flag convergence; the similarity signal is
   **calibrated to a rolling baseline** (and the dedup threshold is per-embedder),
@@ -45,11 +47,12 @@ In Claude Code, add this repo as a plugin marketplace and install the plugin:
 
 That's it — no clone, no `setup.sh`, no `--plugin-dir`. On the next session start, the
 plugin **provisions its own Python engine in the background**: it builds a virtualenv
-and installs the full semantic stack (numpy, scikit-learn, and the local
-`sentence-transformers` embedder, `BAAI/bge-small-en-v1.5`). This is a one-time
-download of a few hundred MB and can take a few minutes; it runs **non-blocking**, so
-Claude Code stays usable the whole time. The venv is stored in the plugin's persistent
-data directory, so it **survives plugin updates**.
+and installs the default stack (numpy, scikit-learn, and the multilingual
+`model2vec` embedder, `minishlab/potion-multilingual-128M`). The embedder weights are
+**~120 MB** and need **only numpy at inference — no PyTorch**, so the first-run download
+is small and fast; it runs **non-blocking**, so Claude Code stays usable the whole time.
+The venv is stored in the plugin's persistent data directory, so it **survives plugin
+updates**.
 
 If `uv` is on your PATH it's used for a faster install; otherwise the bundled
 `python -m venv` + `pip` path is used. Nothing is auto-installed onto your system
@@ -128,18 +131,31 @@ claude plugin validate .          # or: claude plugin validate --strict .
 
 ### The one configuration choice (embedding provider)
 
-By default the engine uses the **local** `sentence-transformers` embedder — no API
-key, CPU-only, downloaded once on first use. To use a hosted provider instead, set
-environment variables before launching Claude Code:
+By default the engine uses the **static** `model2vec` embedder
+(`minishlab/potion-multilingual-128M`) — no API key, CPU-only, **multilingual**,
+torch-free (~120 MB), downloaded once on first use. Select a different provider with
+the `CREATIVITY_EMBEDDER` environment variable before launching Claude Code:
 
 ```bash
-export CREATIVITY_EMBEDDER=api          # hash | local | api
-export CREATIVITY_EMBED_API=voyage      # provider name (stub — wire up in embed.py)
-export CREATIVITY_EMBED_API_KEY=...      # your key
+export CREATIVITY_EMBEDDER=local   # static | local | hash | api
 ```
 
-`CREATIVITY_EMBEDDER=hash` selects a deterministic, dependency-light embedder used
-by the tests and the offline self-test (no model download).
+- **`static`** (default) — `potion-multilingual-128M`, 256-dim, 101 languages,
+  numpy-only inference.
+- **`local`** — higher-fidelity **English-only** `BAAI/bge-small-en-v1.5` (384-dim).
+  Pulls the ~2 GB PyTorch stack, so it's **opt-in**: install it with
+  `pip install -r skills/ideate/scripts/requirements-local.txt`.
+- **`hash`** — deterministic, dependency-light char-n-gram embedder used by the tests
+  and the offline self-test (no model download).
+- **`api`** — an **extension point** for a hosted provider (Voyage/OpenAI/Cohere). It
+  is a stub: constructing it is cheap, but embedding raises until you wire a backend
+  into `embed.py`.
+
+> **Switching the default is breaking for existing projects.** `static` is 256-dim and
+> `local` is 384-dim; the engine refuses to mix embedding widths within one project. A
+> project created/persisted under one embedder can't be re-ingested under another —
+> start a **new** project, or pin the original embedder (e.g.
+> `export CREATIVITY_EMBEDDER=local`) and re-embed if you must switch.
 
 ## How a session works (under the hood)
 
@@ -231,8 +247,8 @@ with a **null check** that DPP doesn't regress below a random subset on an
 already-uniform pool — plus an **induced-collapse reversal** (a samey generation
 trips the monitor; the next generation recovers once diversity pressure rises).
 A `--live` run adds a semantic sanity check (a paraphrase beats an unrelated
-sentence under the real embedder), skipped cleanly when sentence-transformers
-isn't installed.
+sentence under the real default `static` embedder), skipped cleanly when that
+embedder can't be built or downloaded.
 
 ## Layout
 

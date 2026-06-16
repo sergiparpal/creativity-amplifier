@@ -1,5 +1,8 @@
 numpy>=1.26            # all of the diversity math (DPP log-det, Vendi eigvalsh, novelty); numpy 2.x supported & tested
 scikit-learn>=1.4      # HashingVectorizer for the deterministic 'hash' embedder
 pyyaml>=6              # domain/axes config
-sentence-transformers>=2.7   # default local (live) embedder (CPU)
+model2vec>=0.3         # default 'static' embedder: potion-multilingual-128M (256-dim, 101 langs); numpy-only inference, NO torch (~120 MB weights)
 pytest>=8              # dev/test only
+# High-fidelity English 'local' embedder (BAAI/bge-small-en-v1.5) is OPT-IN and pulls
+# the ~2 GB torch stack — install it only when you set CREATIVITY_EMBEDDER=local:
+#   pip install -r requirements-local.txt

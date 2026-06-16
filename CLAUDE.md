@@ -35,8 +35,9 @@ and any change must preserve it:
   final slate. (Set the weight to 0 for pure diversity.)
 - **The user is the real selector.** The engine proposes a diverse slate + the most-informative
   A-vs-B pairs; the human chooses and pins "stepping stones".
-- The local embedder is deliberately a **different model family** from Claude
-  (`BAAI/bge-small-en-v1.5`) so "what's novel" isn't judged by the lineage that generated the ideas.
+- The embedder is deliberately a **different model family** from Claude (default
+  `minishlab/potion-multilingual-128M`; opt-in high-fidelity `BAAI/bge-small-en-v1.5`) so
+  "what's novel" isn't judged by the lineage that generated the ideas.
 - The **anti-collapse monitor is never bypassed** — when it flags convergence the skill raises
   diversity pressure next round; it is never removed or worked around.
 
@@ -50,7 +51,9 @@ Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
   process right after load — non-blocking, idempotent, concurrency-safe. The venv is
   built in **`${CLAUDE_PLUGIN_DATA}/venv`** (the plugin's persistent data dir, so it
   survives plugin updates) and the engine is installed **non-editable** there. Default
-  install is the **full semantic stack** (the `local` sentence-transformers embedder).
+  install is the **torch-free multilingual stack** (the `static` model2vec embedder,
+  `potion-multilingual-128M`, ~120 MB); the heavier `local` (bge / sentence-transformers)
+  embedder is opt-in via `requirements-local.txt`.
 - **Developers:** `bash skills/ideate/scripts/setup.sh` (or `python3
   skills/ideate/scripts/bootstrap.py`) builds `skills/ideate/.venv` with the engine
   installed **editable**, then `claude --plugin-dir .`.
@@ -155,10 +158,18 @@ seed)`), the centroids are persisted (`open_nicher.json`), and the archive is **
 freezing, so niche ids stay stable. Exactly one axis may be the `primary_novelty` "open" axis (the
 novelty carrier). Within a niche, higher `fitness` wins; ties break toward higher novelty.
 
-**Embedders** (`embed.py`), selected by `CREATIVITY_EMBEDDER` (`local` default):
-- `local` — sentence-transformers `BAAI/bge-small-en-v1.5`, CPU, lazily downloaded (real runs).
+**Embedders** (`embed.py`), selected by `CREATIVITY_EMBEDDER` (`static` default):
+- `static` — model2vec `minishlab/potion-multilingual-128M`, **256-dim, 101 languages**, CPU,
+  **numpy-only inference (no torch)**, ~120 MB, lazily downloaded. The default for real runs.
+- `local` — sentence-transformers `BAAI/bge-small-en-v1.5`, **384-dim, English-only**, CPU, pulls
+  the ~2 GB torch stack (opt-in via `requirements-local.txt`); the high-fidelity escape hatch.
 - `hash` — deterministic char-n-gram `HashingVectorizer`, no downloads (tests + offline selftest).
 - `api` — a stub; constructing it is cheap, embedding raises until a backend is wired in `embed.py`.
+
+Switching the default from `local` (384-dim) to `static` (256-dim) is **breaking for projects
+persisted under the old default**: `_guard_embedding_dim` refuses to mix widths, so an old project
+must be re-embedded or pinned to `CREATIVITY_EMBEDDER=local`. Each family has its own dedup τ in
+`DEDUP_TAU_BY_EMBEDDER` (`static: 0.93`, calibrated on an EN+ES near-dup/distinct sample).
 
 All embedders return **L2-normalized rows**, so cosine similarity is a plain dot product — this
 assumption is relied on throughout the math modules. `ingest` guards against mixing embedding

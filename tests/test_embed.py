@@ -97,10 +97,22 @@ def test_l2_normalize_handles_zero_row():
 
 def test_provider_switch_loads_without_import_errors():
     reset_cache()
-    # hash and api construct cheaply; local constructs without downloading.
+    # All providers construct cheaply; static/local defer the model download to
+    # first use, so constructing them here must not import model2vec/torch.
+    assert get_embedder("static").name == "static"
     assert get_embedder("hash").name == "hash"
     assert get_embedder("api").name == "api"
     assert get_embedder("local").name == "local"
+    reset_cache()
+
+
+def test_default_provider_is_static(monkeypatch):
+    # The torch-free multilingual embedder is the default for real runs: with no
+    # CREATIVITY_EMBEDDER set, get_embedder() resolves to 'static'.
+    assert embed.DEFAULT_PROVIDER == "static"
+    reset_cache()
+    monkeypatch.delenv(embed.ENV_VAR, raising=False)
+    assert get_embedder().name == "static"
     reset_cache()
 
 
@@ -139,7 +151,9 @@ def test_template_method_normalizes_any_provider():
 def test_dedup_tau_is_per_embedder():
     # Each family gets its own near-duplicate threshold; the scales differ.
     assert default_dedup_tau("hash") == 0.92
+    assert default_dedup_tau("static") == 0.93
     assert default_dedup_tau("local") == 0.94
     assert default_dedup_tau("local") != default_dedup_tau("hash")
+    assert default_dedup_tau("static") != default_dedup_tau("local")
     # unknown families fall back to the global default
     assert default_dedup_tau("mystery-provider") == DEFAULT_DEDUP_TAU
