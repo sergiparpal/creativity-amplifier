@@ -33,10 +33,10 @@ jobs:
       # Guarantee the deterministic, download-free embedder everywhere.
       CREATIVITY_EMBEDDER: hash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -58,10 +58,10 @@ jobs:
     name: validate plugin metadata
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -90,9 +90,9 @@ jobs:
       # Best-effort: validate with the real Claude Code CLI if it installs cleanly.
       # This must never fail the job — it skips cleanly when the CLI is unavailable.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
         continue-on-error: true
 
       - name: Validate with Claude Code CLI (best-effort)
