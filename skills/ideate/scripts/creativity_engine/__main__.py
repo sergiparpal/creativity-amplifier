@@ -33,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--axes", required=True, help="path to axes .json/.yaml")
     sp.add_argument("--seed", type=int, default=0)
 
+    sp = sub.add_parser(
+        "paths", help="ensure the project state dir (+ tmp/) and print resolved paths"
+    )
+    sp.add_argument("--project", required=True)
+
     sp = sub.add_parser("recall", help="return preference memory for injection")
     sp.add_argument("--project", required=True)
     sp.add_argument("--k", type=int, default=10)
@@ -74,6 +79,8 @@ def main(argv=None) -> int:
     try:
         if args.command == "init-project":
             _emit(pipeline.init_project(args.project, args.axes, seed=args.seed))
+        elif args.command == "paths":
+            _emit(pipeline.paths(args.project))
         elif args.command == "recall":
             _emit(pipeline.recall(args.project, k=args.k))
         elif args.command == "ingest":

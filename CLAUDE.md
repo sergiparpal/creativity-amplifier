@@ -103,6 +103,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 | Command | Does |
 | :-- | :-- |
 | `init-project` | create state dirs, snapshot the resolved axes + session settings |
+| `paths` | ensure the project state dir (incl. its `tmp/` scratch dir) + return resolved paths |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor (one cycle) |
 | `remember` | append a comparison/pin to preference memory |
@@ -148,6 +149,15 @@ monitor (a "boiling-frog" failure). While still bootstrapping (no calibrated bas
 generation is admitted, so the window can form even under an embedder whose natural cosine scale
 trips the absolute fallback.
 
+**Prefilter guard** (the load-bearing invariant, mechanically sensed): the monitor covers the
+*generation* stage (it runs on raw submitted vectors), but the agent's **prefilter** — dropping
+candidates as "off-brief" — is the one stage the engine never sees, so an agent could cut variety
+under cover of validity. `ingest` therefore compares `len(cand_list)` **submitted** (pre-dedup, *not*
+post-dedup survivors — dedup is the engine's own job) against `candidates_per_generation`, and emits a
+**soft** `monitor.under_generation` flag (with `submitted`/`target_candidates`) when it falls below
+`engine.under_generation_ratio` (default 0.6). The flag is advisory: it never touches `collapsing` or
+the calibration window; `SKILL.md`/`loop.md` tell the agent to generate more / prefilter less.
+
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
 the axis value (`CVTNicher`). The open-axis partition is **data-adaptive (fit-once-then-freeze)**:
@@ -187,7 +197,10 @@ settings), `axes.json` (the resolved axes geometry — kept separate from settin
 `AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, and `open_nicher.json`
 (the frozen CVT centroids, written once the open-axis partition freezes — see Niching). Preference memory
 (`comparisons.jsonl`, `pins.json`) lives in a per-domain sub-directory, **namespaced per domain**
-so switching domains keeps preferences separate.
+so switching domains keeps preferences separate. A per-project `tmp/` scratch dir (created by
+`State.ensure`, surfaced by the `paths` command) holds the skill's hand-off files (`axes.json`,
+`candidates.json`, `event.json`) inside the state home so they never clutter the user's cwd or
+collide across concurrent sessions.
 
 **The self-test is the correctness contract** (`selftest.py`). It enforces a **value gate** — the
 engine's diverse slate must beat a single-shot baseline on mean pairwise distance, Vendi score, and

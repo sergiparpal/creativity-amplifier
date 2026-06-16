@@ -93,6 +93,21 @@ def init_project(
 
 
 # --------------------------------------------------------------------------- #
+# paths
+# --------------------------------------------------------------------------- #
+def paths(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
+    """Ensure the project's state dir (incl. its ``tmp/`` scratch dir) and return
+    the resolved paths. The skill calls this **before** writing its hand-off files
+    so it can drop ``axes.json`` / ``candidates.json`` / ``event.json`` under
+    ``tmp`` (inside the state home) instead of the user's cwd — keeping home and
+    project-slug resolution entirely in the engine.
+    """
+    from .state import State
+
+    return State(project, home=home).ensure().paths()
+
+
+# --------------------------------------------------------------------------- #
 # recall
 # --------------------------------------------------------------------------- #
 def recall(project: str, k: int = 10, home: Optional[Path] = None) -> Dict[str, Any]:
@@ -520,6 +535,29 @@ def ingest(
         cos_ceiling=econfig.monitor_cos_ceiling,
         min_baseline=econfig.monitor_min_baseline,
     )
+
+    # Prefilter guard (soft). The monitor above runs on the SUBMITTED generation,
+    # so an agent that generates samey ideas is caught by `too_similar`. The blind
+    # spot is the *prefilter* stage the engine never sees: the agent dropping
+    # candidates as "off-brief" and cutting variety under cover of validity. We
+    # can't see what was dropped, but we can see how many reached ingest — if that
+    # is well below the per-generation target, flag it so the skill generates more
+    # / prefilters less next round. Sensor is at the submitted-vs-target boundary,
+    # NOT post-dedup survivors (dedup is the engine's own job, not the agent's).
+    # This NEVER affects `collapsing` or the calibration window — purely advisory.
+    target = int(state.read_meta().get("candidates_per_generation", 0) or 0)
+    submitted = len(cand_list)
+    mon["submitted"] = submitted
+    mon["target_candidates"] = target
+    if target > 0 and submitted < econfig.under_generation_ratio * target:
+        mon["under_generation"] = True
+        mon["under_generation_note"] = (
+            f"only {submitted} candidates reached ingest vs target {target} "
+            f"(< {econfig.under_generation_ratio:.0%}); possible over-prefiltering "
+            f"— generate more / prefilter less next round"
+        )
+    else:
+        mon["under_generation"] = False
 
     # Namespace preference memory by the session domain so ingest is consistent
     # with remember/recall/parents (all share Session's snapshot resolution).

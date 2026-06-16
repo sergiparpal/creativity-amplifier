@@ -21,6 +21,15 @@ def test_ensure_and_paths(home):
     assert paths["root"] == str(st.root)
 
 
+def test_ensure_creates_tmp_scratch_dir(home):
+    # The skill's hand-off files (axes.json / candidates.json / event.json) live in
+    # this per-project scratch dir inside the state home, never the user's cwd.
+    st = State("proj").ensure()
+    assert st.tmp_dir.exists() and st.tmp_dir.is_dir()
+    assert st.tmp_dir == st.root / "tmp"
+    assert st.paths()["tmp"] == str(st.tmp_dir)
+
+
 def test_json_round_trip(home):
     st = State("proj").ensure()
     axes = {"domain": "d", "axes": [{"name": "a", "type": "categorical"}]}

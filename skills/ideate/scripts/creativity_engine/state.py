@@ -11,6 +11,7 @@ isolate runs). Layout::
         archive.json              # MAP-Elites: niche_id -> niche record
         candidates.json           # id -> candidate record (genealogy kept)
         embeddings.json           # id -> embedding vector
+        tmp/                      # scratch dir for the skill's hand-off files
         memory/<domain>/
             comparisons.jsonl     # appended preference events
             pins.json             # pinned "stepping stone" ids
@@ -91,6 +92,13 @@ class State:
     def open_nicher_path(self) -> Path:
         return self.root / "open_nicher.json"
 
+    @property
+    def tmp_dir(self) -> Path:
+        """Per-project scratch dir for the skill's hand-off files (axes.json,
+        candidates.json, event.json). Inside the state home so they never clutter
+        the user's cwd and can't collide across concurrent sessions."""
+        return self.root / "tmp"
+
     def memory_dir(self, domain: str) -> Path:
         return self.root / "memory" / _path_slug(domain)
 
@@ -106,6 +114,7 @@ class State:
 
     def ensure(self) -> "State":
         self.root.mkdir(parents=True, exist_ok=True)
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
         return self
 
     def paths(self) -> Dict[str, str]:
@@ -116,6 +125,7 @@ class State:
             "archive": str(self.archive_path),
             "candidates": str(self.candidates_path),
             "embeddings": str(self.embeddings_path),
+            "tmp": str(self.tmp_dir),
         }
 
     # -- generic json helpers ---------------------------------------------- #

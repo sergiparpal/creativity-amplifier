@@ -189,6 +189,10 @@ class EngineConfig:
     monitor_cos_ceiling: float = 0.80
     monitor_window: int = 5
     monitor_min_baseline: int = 2
+    # prefilter guard: flag a soft "under_generation" signal when the agent submits
+    # fewer than this fraction of ``candidates_per_generation`` to ingest (the agent
+    # may be over-prefiltering and cutting variety under cover of "off-brief").
+    under_generation_ratio: float = 0.6
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -205,6 +209,7 @@ class EngineConfig:
             "monitor_cos_ceiling": self.monitor_cos_ceiling,
             "monitor_window": self.monitor_window,
             "monitor_min_baseline": self.monitor_min_baseline,
+            "under_generation_ratio": self.under_generation_ratio,
         }
 
     @classmethod
@@ -272,6 +277,9 @@ class EngineConfig:
             monitor_window=pos_int("monitor_window", base.monitor_window),
             monitor_min_baseline=pos_int(
                 "monitor_min_baseline", base.monitor_min_baseline
+            ),
+            under_generation_ratio=unit_float(
+                "under_generation_ratio", base.under_generation_ratio
             ),
         )
 

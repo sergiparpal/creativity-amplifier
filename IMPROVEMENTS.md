@@ -150,6 +150,15 @@ with the real footprint and the migration note.
 
 ## 3. Operational hardening
 
+**Status:** ✅ Done — all three. 3a: `ingest` emits a soft
+`monitor.under_generation` flag (`submitted`/`target_candidates`) when fewer than
+`engine.under_generation_ratio` (0.6) of the target reach it, advisory only (never
+touches `collapsing`/calibration); SKILL/loop tell the agent to prefilter less. 3b:
+the engine-not-ready branch now tails `provision.log` before/after the foreground
+bootstrap. 3c: a per-project `tmp/` scratch dir (new `paths` command,
+`State.ensure`) holds the skill's hand-off files inside the state home, never the
+cwd.
+
 ### 3a. Prefilter guard (mechanical check on the load-bearing invariant)
 
 **Why:** "the judge never prunes variety" is enforced only by prose in

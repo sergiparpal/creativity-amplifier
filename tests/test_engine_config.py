@@ -46,6 +46,11 @@ def test_load_defaults_and_overrides():
     assert cfg.dedup_tau == 0.8
     # unspecified keys keep their defaults
     assert cfg.knn_k == EngineConfig().knn_k
+    # prefilter-guard ratio: default and override
+    assert EngineConfig().under_generation_ratio == 0.6
+    assert config.load_engine_config(
+        {"engine": {"under_generation_ratio": 0.25}}
+    ).under_generation_ratio == 0.25
 
 
 def test_example_domain_engine_overrides():
@@ -64,6 +69,7 @@ def test_example_domain_engine_overrides():
         ({"engine": {"quality_weight": 2}}, "quality_weight"),
         ({"engine": {"dedup_tau": 1.5}}, "dedup_tau"),
         ({"engine": {"knn_k": "x"}}, "knn_k"),
+        ({"engine": {"under_generation_ratio": 1.5}}, "under_generation_ratio"),
         ({"engine": []}, "engine"),
     ],
 )

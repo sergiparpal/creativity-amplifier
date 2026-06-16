@@ -16,6 +16,19 @@ All engine commands read/write JSON and take `--project PROJECT`. Randomized
 steps take `--seed <int>` — reuse the same seed within a session for
 reproducibility.
 
+**Scratch files go in the project's `tmp/`, never your cwd.** Once the engine is
+ready (step 0), resolve the per-project scratch dir and reuse it for every hand-off
+file (`axes.json`, `candidates.json`, `event.json`):
+
+```
+ENGINE paths --project PROJECT      # -> {"root","meta","axes",...,"tmp"}; sets up the dir
+TMP = <the "tmp" field of that output>   # e.g. ~/.creativity-amplifier/<project>/tmp
+```
+
+Writing scratch files under `$TMP` (inside the state home, `~/.creativity-amplifier`
+or `$CREATIVITY_AMPLIFIER_HOME`) keeps the user's working directory clean and avoids
+collisions across concurrent sessions. Never write these files to the cwd.
+
 ---
 
 ## 0. Ensure the engine
@@ -31,10 +44,21 @@ Find the interpreter pointer at the **first** path that exists:
 
 Read that file; its contents are `<PYBIN>`.
 
-**If neither pointer exists yet**, the one-time setup is still running or hasn't
-started. Tell the user once that you're setting up the engine (a one-time, multi-
-minute download of ML libraries + a small embedding model), then finish/await it in
-the foreground (idempotent; waits for any in-progress background provision):
+**If neither pointer exists yet**, the one-time setup is still running, hasn't
+started, **or failed in the background**. The detached worker logs to
+`provision.log` next to the venv — check it **first** so you don't re-run blind:
+
+```
+# the log sits at <venv-parent>/provision.log, i.e. the FIRST that exists:
+tail -n 40 "${CLAUDE_PLUGIN_DATA}/provision.log"   # marketplace install
+tail -n 40 "${CLAUDE_SKILL_DIR}/provision.log"     # dev install
+```
+
+If the tail shows a real failure (e.g. a wheel won't compile, no network, Python
+too old), relay it to the user — that is the actual diagnosis. Then tell the user
+once that you're setting up the engine (a one-time, multi-minute download of ML
+libraries + a small embedding model) and finish/await it in the foreground
+(idempotent; waits for any in-progress background provision):
 
 ```
 "<PY>" "${CLAUDE_SKILL_DIR}/scripts/bootstrap.py" --venv "${CLAUDE_PLUGIN_DATA}/venv"
@@ -44,11 +68,12 @@ the foreground (idempotent; waits for any in-progress background provision):
 `bootstrap.py` creates the venv (using `uv` if it is on PATH, else `python -m venv`)
 and installs deps — the **static** multilingual CPU embedder
 (`minishlab/potion-multilingual-128M`, no API key, ~120 MB, torch-free) by default.
-Re-read the pointer afterwards. If it still cannot build the venv (e.g. Python 3.11+
-is missing), relay the printed error verbatim and stop — it is actionable. For the
-higher-fidelity English-only embedder, the user installs `requirements-local.txt` and
-sets `CREATIVITY_EMBEDDER=local`; a hosted embedder is `CREATIVITY_EMBEDDER=api` plus
-provider env vars (a stub until wired up).
+Re-read the pointer afterwards. **If it still fails**, show the fresh tail of
+`provision.log` again alongside the foreground error and stop — the combination is
+the actionable diagnosis (e.g. Python 3.11+ missing, or a wheel that won't build on
+this OS). For the higher-fidelity English-only embedder, the user installs
+`requirements-local.txt` and sets `CREATIVITY_EMBEDDER=local`; a hosted embedder is
+`CREATIVITY_EMBEDDER=api` plus provider env vars (a stub until wired up).
 
 ---
 
@@ -75,7 +100,8 @@ Accept a quick tweak or an "ok". Do not block for long.
 `${CLAUDE_SKILL_DIR}/config/domains/generic.yaml` and tell the user you used
 neutral axes.
 
-Write the resolved axes to a temp file `axes.json` in this shape:
+Write the resolved axes to `$TMP/axes.json` (the scratch dir from the top of this
+file) in this shape:
 
 ```json
 {
@@ -96,7 +122,7 @@ Write the resolved axes to a temp file `axes.json` in this shape:
 Then:
 
 ```
-ENGINE init-project --project PROJECT --axes axes.json --seed 7
+ENGINE init-project --project PROJECT --axes $TMP/axes.json --seed 7
 ENGINE recall --project PROJECT          # returns {domain, preferences, pins}
 ```
 
@@ -137,14 +163,14 @@ that is exactly the variety the engine needs. Optionally attach `fitness` (0–1
 for within-niche ranking; never use it to reduce diversity. Pairwise comparison
 is allowed where it sharpens a validity call.
 
-Write survivors to `candidates.json` (a JSON list, or `{"candidates": [...]}`).
+Write survivors to `$TMP/candidates.json` (a JSON list, or `{"candidates": [...]}`).
 
 ---
 
 ## 4. Ingest (engine owns diversity)
 
 ```
-ENGINE ingest --project PROJECT --candidates candidates.json --axes axes.json --seed 7
+ENGINE ingest --project PROJECT --candidates $TMP/candidates.json --axes $TMP/axes.json --seed 7
 ```
 
 Returns:
@@ -154,10 +180,16 @@ Returns:
   "slate": [ {"id","text","descriptor","coords","niche_id","novelty","fitness","embedding_ref"}, ... ],
   "ask_pairs": [ ["idA","idB","why this pair is worth asking"], ... ],
   "monitor": {"collapsing": false, "mean_cosine": 0.18, "entropy": 2.1,
-              "normalized_entropy": 0.88, "coverage": 9, "n": 12, "reasons": []},
+              "normalized_entropy": 0.88, "coverage": 9, "n": 12, "reasons": [],
+              "submitted": 12, "target_candidates": 12, "under_generation": false},
   "parents": ["id", "..."]
 }
 ```
+
+`submitted` / `target_candidates` / `under_generation` are the **prefilter guard**:
+the engine sees only the candidates you submitted, so if you prefiltered away so many
+that `under_generation` is `true`, you may be cutting variety under cover of validity
+(see step 7).
 
 The engine embedded survivors with a **different model family** from you,
 deduped near-duplicates, placed each into a MAP-Elites niche over the resolved
@@ -188,12 +220,12 @@ For each user answer, record it:
 
 ```
 # a pairwise preference
-echo '{"type":"comparison","winner":"idA","loser":"idB","context":"..."}' > event.json
-ENGINE remember --project PROJECT --event event.json
+echo '{"type":"comparison","winner":"idA","loser":"idB","context":"..."}' > $TMP/event.json
+ENGINE remember --project PROJECT --event $TMP/event.json
 
 # a pin
-echo '{"type":"pin","id":"idA"}' > event.json
-ENGINE remember --project PROJECT --event event.json
+echo '{"type":"pin","id":"idA"}' > $TMP/event.json
+ENGINE remember --project PROJECT --event $TMP/event.json
 ```
 
 Then fetch diverse parents for the next generation (pins are always honored):
@@ -208,14 +240,22 @@ coverage, n}` for the archive.
 
 ---
 
-## 7. React to collapse
+## 7. React to the monitor
 
-If `monitor.collapsing` is true (or `reasons` is non-empty), the search is
-converging. Next round, raise diversity pressure:
+**Collapse.** If `monitor.collapsing` is true (or `reasons` is non-empty), the search
+is converging. Next round, raise diversity pressure:
 - switch to operators you haven't used (analogy/biomimicry/constraint-randomizer);
 - explicitly forbid the crowded niches ("no more X-mechanism ideas");
 - demand each new idea be far from the recent set;
 - widen an axis (e.g. push edginess to its extremes).
+
+**Under-generation (prefilter guard).** If `monitor.under_generation` is true, far
+fewer candidates reached `ingest` than the per-generation target — you likely
+**over-prefiltered**. The engine deduplicates and judges novelty itself, so your only
+job in the prefilter is to drop the *invalid / off-brief / incoherent*. Next round:
+- generate the full `candidates_per_generation` and prefilter **less** — keep weird,
+  risky, or off-beat ideas; they are the variety the geometry needs;
+- only the genuinely invalid should be cut, never the merely unusual.
 
 Never remove, bypass, or "trust the judge instead of" the monitor. The
 anti-convergence machinery is the point of the tool.
