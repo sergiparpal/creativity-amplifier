@@ -64,6 +64,22 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    operators; for each candidate report its `descriptor` on the resolved axes and
    its `genealogy` (parent ids + operator id). Push for variety — each new
    approach must differ from the ones already shown.
+   - **Before generating, map the clichés (anti-cliché directive).** Enumerate the
+     **~6 most obvious / cliché answers** to *this* brief — the responses anyone
+     would reach for first. Split them in half: **O_train** (first ~3 — keep these
+     in view and deliberately generate *away* from them; see the `anti_cliche`
+     operator in `operators.md`) and **O_test** (last ~3 — set aside; do **not**
+     look at them while generating, and never optimize toward them). Build the
+     obvious-set fresh per brief — it is a construction recipe, not a fixed list.
+   - **Honest measurement, never Goodhart.** After the slate is presented (step 7)
+     you *may* report each idea's originality as its distance to the **held-out
+     O_test** (advisory only — it never picks or ranks the slate). **Never**
+     validate against **O_train**: scoring against the very clichés you steered
+     away from just confirms you followed instructions (a Goodhart trap); the
+     held-out O_test is the only honest referent.
+   - **Caveat.** "Obvious" is still *your* (Claude's) notion of cliché, not the
+     world's. This **hedges** cliché; it does **not** guarantee novelty against
+     prior art or the wider world.
 5. **Prefilter** yourself using `${CLAUDE_SKILL_DIR}/references/judge_rubric.md`
    to drop only invalid / off-brief candidates. NEVER judge novelty here. You may
    attach a within-niche `fitness` (0–1); you may NOT use it to cut variety.

@@ -64,6 +64,18 @@ Borrow a mechanism from a living system (swarming, symbiosis, camouflage,
 metamorphosis, mycelial networks) and adapt it. A reliable source of mechanisms
 for the primary-novelty axis.
 
+### `anti_cliche`
+Before generating, enumerate the **~6 most obvious / cliché answers** to the brief
+and split them into **O_train** (first half) and a held-out **O_test** (second
+half). Treat **O_train** as a *forbidden zone*: deliberately generate ideas that
+sit far from it — different mechanism, different framing, different form — so the
+slate starts away from the crowd the engine would otherwise have to disperse. Do
+**not** look at or optimize toward **O_test**; it is reserved for honest,
+after-the-fact originality measurement (validate against O_test, **never**
+O_train — see SKILL.md). Build the obvious-set fresh per brief (a construction
+recipe, not a fixed list). Pairs naturally with `inversion` and `reframing`, which
+already move away from the obvious.
+
 ---
 
 ## Structured idea generators (use to systematically cover the grid)
