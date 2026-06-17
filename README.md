@@ -24,6 +24,14 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   "what's novel" isn't judged by the same lineage that generated the ideas, in
   any language. A higher-fidelity English-only `BAAI/bge-small-en-v1.5` embedder
   is available as an opt-in.
+- **Anti-cliché generation, measured honestly.** Before generating, Claude maps
+  the **~6 most obvious answers** to *your* brief and deliberately generates
+  *away* from them (a recipe re-derived per brief, not a fixed list). Originality
+  is then reported advisorily as an idea's distance to a **held-out** half of that
+  obvious set — so you're never scored against the very clichés you steered around.
+  It **hedges** cliché rather than guaranteeing world-novelty, and it is
+  **measurement only**: the cliché signal never feeds the selection geometry, so
+  it can't prune variety.
 - **An anti-collapse monitor that's never bypassed.** Shannon entropy over niche
   occupancy + mean pairwise cosine flag convergence; the similarity signal is
   **calibrated to a rolling baseline** (and the dedup threshold is per-embedder),
@@ -168,9 +176,10 @@ above; this is the same loop with the internals. The skill follows
    **infers 4–6 axes** from your brief (marking one `open` axis as the primary
    novelty carrier) and confirms them with **one short question**. If it can't,
    it falls back to `config/domains/generic.yaml`.
-2. **Generate (agent).** Claude applies several variation operators
-   (`references/operators.md`) to draft candidates, each with a descriptor on the
-   resolved axes and genealogy.
+2. **Generate (agent).** Claude first maps the brief's ~6 most obvious answers,
+   then applies several variation operators (`references/operators.md`) to draft
+   candidates that deliberately steer *away* from those clichés, each with a
+   descriptor on the resolved axes and genealogy.
 3. **Prefilter (agent).** Claude applies `references/judge_rubric.md` to drop only
    invalid / off-brief candidates — never to cut variety.
 4. **Ingest (engine).** Survivors are embedded, deduped, placed into MAP-Elites
@@ -223,7 +232,7 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 | `remember` | append a comparison/pin to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
 | `metrics` | current archive health (entropy, mean cosine, coverage, n) |
-| `selftest` | full loop with a stubbed LLM + human; value gate + collapse reversal |
+| `selftest` | full loop with a stubbed LLM + human; variety gate + collapse reversal |
 
 Runtime state is written **outside** the plugin (so reinstalls don't wipe it):
 `~/.creativity-amplifier/<project>/...`, preferences namespaced per domain.
@@ -239,7 +248,7 @@ skills/ideate/.venv/bin/python -m creativity_engine selftest
 skills/ideate/.venv/bin/python -m pytest -q
 ```
 
-The self-test enforces a **value gate** — the engine's diverse slate must beat a
+The self-test enforces a **variety gate** — the engine's diverse slate must beat a
 single-shot baseline on mean pairwise distance, Vendi score, and niche entropy,
 and DPP must beat naive first-N selection on the same pool (**shuffled** so
 first-N isn't trivially the near-clones, and **averaged over several seeds**),
@@ -267,7 +276,9 @@ creativity-amplifier/                  # plugin root
 │   ├── config/domains/                # _schema.md, generic.yaml, examples/*.yaml
 │   └── scripts/
 │       ├── bootstrap.py               # cross-platform self-provisioning installer
-│       ├── setup.sh, requirements.txt, pyproject.toml
+│       ├── setup.sh, pyproject.toml
+│       ├── requirements.txt           # runtime deps (version-bounded)
+│       ├── requirements-dev.txt       # + pytest (dev/CI); requirements-local.txt = opt-in torch embedder
 │       └── creativity_engine/         # the Python engine (CLI)
 ├── tests/                             # pytest (dev-only)
 ├── docs/PAPER.md                      # reference-architecture paper (rationale)
