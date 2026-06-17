@@ -80,6 +80,14 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    - **Caveat.** "Obvious" is still *your* (Claude's) notion of cliché, not the
      world's. This **hedges** cliché; it does **not** guarantee novelty against
      prior art or the wider world.
+   - **Descriptor discipline (protect niche placement).** Niche placement — incl.
+     the open axis — runs on *your* descriptor words **before** the engine sees
+     anything, so lazy or duplicate descriptors collapse niches up front. Give no
+     two candidates an identical `mechanism` string unless they genuinely share a
+     mechanism (the open-axis `mechanism` text carries the primary-novelty niche);
+     prefer the **extremes** of continuous axes (e.g. `boldness`) over the middle;
+     and make each axis value **meaningfully distinct**, not a cosmetic variation.
+     See `operators.md` → "Descriptor discipline".
 5. **Prefilter** yourself using `${CLAUDE_SKILL_DIR}/references/judge_rubric.md`
    to drop only invalid / off-brief candidates. NEVER judge novelty here. You may
    attach a within-niche `fitness` (0–1); you may NOT use it to cut variety.

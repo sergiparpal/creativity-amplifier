@@ -101,11 +101,20 @@ than compromise it.
 
 ## Descriptor discipline
 
-For every candidate, fill the resolved axes honestly:
+Niche placement — **including the open axis** — is driven entirely by *your*
+descriptor word choices, **before** the engine runs. Lazy or duplicate descriptors
+collapse niches up front, so the engine never sees the variety you generated.
+Protect this input contract. For every candidate, fill the resolved axes honestly:
 - **categorical** → pick the value that truly describes the idea (don't default
   everything to the same value — that collapses niches).
-- **continuous** → a number in range that reflects the idea (use the extremes,
-  not just the middle).
+- **continuous** → a number in range that reflects the idea. **Prefer the
+  extremes** (e.g. `boldness` near 0 or 1) over clustering everything in the
+  middle.
 - **open / primary-novelty** → a few words naming the *core mechanism* — the
-  thing that makes this idea work. This is what the engine niches geometrically,
-  so make distinct ideas name distinct mechanisms.
+  thing that makes this idea work. This is the **primary-novelty niche** the
+  engine carries, so **no two candidates may share an identical `mechanism` string
+  unless they genuinely share a mechanism.** Distinct ideas must name distinct
+  mechanisms.
+- Make every axis value **meaningfully distinct**, not a cosmetic re-wording of
+  another candidate's. Two descriptors that differ only superficially land in the
+  same niche and compete as one — variety you never get back.
