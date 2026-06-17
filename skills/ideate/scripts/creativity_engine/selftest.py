@@ -16,6 +16,9 @@ domain-neutral brief + generic axes and then proves two things:
 * **Live semantic check** (``--live`` only) — a paraphrase is more similar than an
   unrelated sentence under the real default embedder (the torch-free multilingual
   ``static`` model); skipped cleanly when that embedder can't be built/downloaded.
+* **Originality probe** (advisory) — distance from the diverse slate to a held-out
+  "obvious-set". Reported for visibility only; it is **not** part of the variety
+  gate and **never** included in ``ok`` (originality is measured, never selected on).
 
 The stubbed LLM is a canned candidate generator; the stubbed human auto-picks the
 highest-novelty idea in each slate.
@@ -31,7 +34,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from . import config, diversity, embed, monitor, pipeline
+from . import config, diversity, embed, monitor, originality, pipeline
 from .archive import compute_niche
 from .state import State
 
@@ -296,6 +299,65 @@ def _live_semantic_check(live: bool) -> Dict[str, Any]:
     }
 
 
+def _originality_probe(spec, settings, embedder, seed) -> Dict[str, Any]:
+    """Advisory: how far the engine's diverse slate sits from an "obvious-set".
+
+    **Advisory only** — never a pass/fail gate, never part of ``ok``, and never
+    fed into the DPP ``q`` / selection geometry. It supplies the external-ish
+    referent the engine otherwise lacks, as a pure measurement: build a small
+    fixture of clichéd one-liners for the generic brief, split it **disjointly**
+    into ``O_train`` (first half) and a held-out ``O_test`` (second half), and
+    score the slate's distance-to-obvious against **O_test only**. Holding out
+    ``O_test`` keeps the measure non-circular — scoring against the half a
+    generator was told to avoid would be a Goodhart trap. Skips cleanly (like
+    :func:`_live_semantic_check`) if the embedder can't be built/used.
+    """
+    # A clichéd obvious-set for the generic, growth/marketing-ish selftest brief,
+    # mirroring single_shot_candidates' platitude style. NOTE: this is the
+    # self-test's *fixture*; the skill builds its own obvious-set live per brief
+    # (a construction recipe, not this shared object) — see SKILL.md / Item 4.
+    obvious = [
+        "Launch a referral program to boost growth",
+        "Run a viral social media giveaway campaign",
+        "Offer a limited-time discount to drive signups",
+        "Partner with influencers to increase reach",
+        "Start a points-based loyalty rewards program",
+        "Send a retargeting email blast to lapsed users",
+    ]
+    half = len(obvious) // 2
+    # Disjoint split. Only O_test is scored; O_train would be the repellent a live
+    # generator avoids — the canned diverse_candidates here ignores it, which is
+    # fine: the point is to measure against the *held-out* half.
+    o_train, o_test = obvious[:half], obvious[half:]  # noqa: F841 (o_train documents the split)
+    try:
+        o_test_vecs = embedder.embed(o_test)
+        # The engine's diverse slate: place diverse candidates, let DPP pick.
+        diverse = diverse_candidates(settings.candidates_per_generation)
+        dvecs, _ = _place(diverse, spec, embedder, seed)
+        sel = diversity.select_diverse(dvecs, k=spec.slate_size, seed=seed)
+        slate_vecs = dvecs[sel]
+        # A clearly clichéd slate, for the sanity comparison below.
+        cliche = single_shot_candidates(settings.candidates_per_generation)
+        cvecs, _ = _place(cliche, spec, embedder, seed)
+        cliche_vecs = cvecs[: spec.slate_size]
+    except Exception as exc:  # pragma: no cover - depends on the environment
+        return {"ran": False, "skipped": True, "reason": f"embedder unavailable ({exc})"}
+    slate = originality.originality_scores(slate_vecs, o_test_vecs)
+    cliche_score = originality.originality_scores(cliche_vecs, o_test_vecs)
+    return {
+        "ran": True,
+        "skipped": False,
+        "slate_originality_vs_heldout": slate["slate_mean"],
+        # Printed sanity only — the diverse slate should sit further from the
+        # obvious set than a clichéd one. NOT part of `ok`; never gates anything.
+        "cliche_baseline_vs_heldout": cliche_score["slate_mean"],
+        "sanity_diverse_more_original": bool(
+            slate["slate_mean"] > cliche_score["slate_mean"]
+        ),
+        "note": "advisory; not a gate; held-out half so it isn't circular",
+    }
+
+
 def _collapse_reversal(spec, settings, axes, seed, home, project):
     """A samey generation must trip the monitor; the next diverse one recovers.
 
@@ -406,6 +468,10 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
 
         reversal = _collapse_reversal(spec, settings, axes, seed, home, project)
         semantic = _live_semantic_check(live)
+        # Advisory only: measures distance-to-obvious against a held-out half. It is
+        # deliberately NOT added to variety_gate["checks"] and NOT part of `ok`.
+        # Never feed originality into the DPP `q` / selection geometry.
+        originality_probe = _originality_probe(spec, settings, embedder, seed)
 
         written = {
             name: Path(p).exists()
@@ -424,6 +490,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             "variety_gate": variety_gate,
             "collapse_reversal": reversal,
             "live_semantic": semantic,
+            "originality_probe": originality_probe,
             "state_files_written": written,
             "cycles": SELFTEST_CYCLES,
             "embedder": embed.DEFAULT_PROVIDER if live else "hash",
