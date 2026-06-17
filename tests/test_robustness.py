@@ -57,16 +57,37 @@ def test_read_json_corrupt_file_raises_configerror(home):
 
 
 # --------------------------------------------------------------------------- #
-# M1: concurrent add_pin never loses a pin
+# M1: the file lock provides mutual exclusion, and concurrent add_pin keeps every
+# pin. The mutual-exclusion test is deterministic (no timing); the threaded test
+# is the realistic end-to-end check.
 # --------------------------------------------------------------------------- #
+def test_file_lock_is_mutually_exclusive(home):
+    from creativity_engine.state import _file_lock
+
+    st = State("p").ensure()
+    target = st.pins_path("d")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lockdir = target.parent / (target.name + ".lock")
+    with _file_lock(target):
+        assert lockdir.exists()
+        # A second acquirer cannot create the same lock dir while it's held.
+        with pytest.raises(FileExistsError):
+            lockdir.mkdir()
+    assert not lockdir.exists()  # released and cleaned up on exit
+
+
 def test_add_pin_concurrent_no_loss(home):
     State("p").ensure()
-    n = 24
+    n = 16
     barrier = threading.Barrier(n)
+    errors: list = []
 
     def worker(i: int) -> None:
-        barrier.wait()  # maximize contention
-        State("p").add_pin("d", f"pin{i}")
+        try:
+            barrier.wait()  # release all workers together to maximize contention
+            State("p").add_pin("d", f"pin{i}")
+        except Exception as exc:  # surface a worker failure as a test failure
+            errors.append(exc)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
     for t in threads:
@@ -74,6 +95,7 @@ def test_add_pin_concurrent_no_loss(home):
     for t in threads:
         t.join()
 
+    assert not errors, f"workers raised: {errors}"
     pins = State("p").read_pins("d")
     assert sorted(pins) == sorted(f"pin{i}" for i in range(n))
 

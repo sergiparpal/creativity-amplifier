@@ -107,6 +107,14 @@ def _file_lock(target: Path, timeout: float = _LOCK_TIMEOUT):
             if time.monotonic() >= deadline:
                 break  # give up; proceed unlocked
             time.sleep(_LOCK_POLL)
+        except OSError:
+            # A transient FS error rather than "already held": on Windows a name
+            # that another racer is mid-rmdir on can report a sharing/pending-delete
+            # error instead of FileExistsError. Back off briefly and retry rather
+            # than letting the read-modify-write crash.
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(_LOCK_POLL)
     try:
         yield
     finally:
