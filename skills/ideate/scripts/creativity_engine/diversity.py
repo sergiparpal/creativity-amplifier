@@ -6,7 +6,7 @@ kernel submatrix, which is the squared volume they span. We use the standard
 **fast greedy MAP** inference (Chen et al., 2018) to pick a diverse slate, with a
 farthest-point fallback if anything degenerates.
 
-Metrics here (mean pairwise distance, Vendi score) are used by the value gate to
+Metrics here (mean pairwise distance, Vendi score) are used by the variety gate to
 prove the diverse slate beats a non-diverse baseline.
 """
 

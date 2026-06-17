@@ -3,12 +3,14 @@
 No interactive input, no live model. It exercises the whole loop on a
 domain-neutral brief + generic axes and then proves two things:
 
-* **Value gate** — the engine's diverse slate beats a single-shot baseline on
+* **Variety gate** — the engine's diverse slate beats a single-shot baseline on
   mean pairwise distance, Vendi score, and niche entropy; DPP selection beats
   naive first-N on the *same* pool, **shuffled** (so first-N isn't trivially the
   near-clones) and **averaged over several seeds** (so the win isn't a fluke);
   and a **null check** confirms DPP does not regress below a random subset on an
-  already-uniform pool.
+  already-uniform pool. This gate proves **variety** geometry *only* — not
+  originality vs. the world, nor value; what it leaves unvalidated is spelled out
+  in ``variety_gate["coverage_gaps"]``.
 * **Induced-collapse reversal** — a samey generation trips the monitor, and once
   diversity pressure is raised the next generation recovers.
 * **Live semantic check** (``--live`` only) — a paraphrase is more similar than an
@@ -33,7 +35,7 @@ from . import config, diversity, embed, monitor, pipeline
 from .archive import compute_niche
 from .state import State
 
-# Margins the value gate must clear on the seeded fixture.
+# Margins the variety gate must clear on the seeded fixture.
 MARGIN_MPD = 0.10
 MARGIN_VENDI = 0.5
 
@@ -241,7 +243,7 @@ def _null_check(spec, settings, embedder, seed, trials=50, eps=0.02):
 
     There is nothing for selection to "gain" when every item is already spread
     out, so DPP's mean pairwise distance should be at least the random-subset mean
-    (minus a small epsilon). This guards against the value gate rewarding DPP for
+    (minus a small epsilon). This guards against the variety gate rewarding DPP for
     a degenerate pool rather than for genuine selection skill.
     """
     cands = diverse_candidates(max(2 * spec.slate_size, 16), gen=9, prefix="null")
@@ -374,12 +376,18 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
 
         null_check = _null_check(spec, settings, embedder, seed)
 
-        value_gate = {
+        variety_gate = {
             "engine": engine_metrics,
             "single_shot": base_metrics,
             "dpp_on_pool": dpp_metrics,
             "first_n_on_pool": firstn_metrics,
             "null_check": null_check,
+            # This gate validates VARIETY geometry only. State plainly what it does
+            # not cover so the name can't be mistaken for a value/originality gate.
+            "coverage_gaps": [
+                "originality: no external referent is checked",
+                "value: fitness is not asserted (see Item 5)",
+            ],
             "checks": {
                 "mpd_beats_single_shot": engine_metrics["mean_pairwise_distance"]
                 > base_metrics["mean_pairwise_distance"] + MARGIN_MPD,
@@ -394,7 +402,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
                 "null_no_regression": null_check["passed"],
             },
         }
-        value_gate["passed"] = all(value_gate["checks"].values())
+        variety_gate["passed"] = all(variety_gate["checks"].values())
 
         reversal = _collapse_reversal(spec, settings, axes, seed, home, project)
         semantic = _live_semantic_check(live)
@@ -409,11 +417,11 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         semantic_ok = (not semantic.get("ran")) or bool(semantic.get("passed"))
 
         ok = bool(
-            value_gate["passed"] and reversal["passed"] and files_ok and semantic_ok
+            variety_gate["passed"] and reversal["passed"] and files_ok and semantic_ok
         )
         return {
             "ok": ok,
-            "value_gate": value_gate,
+            "variety_gate": variety_gate,
             "collapse_reversal": reversal,
             "live_semantic": semantic,
             "state_files_written": written,

@@ -1,4 +1,4 @@
-"""Phase 6: the stubbed end-to-end selftest, value gate, and collapse reversal."""
+"""Phase 6: the stubbed end-to-end selftest, variety gate, and collapse reversal."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ def test_selftest_ok(report):
     assert report["cycles"] >= 1
 
 
-def test_value_gate_passes_with_margins(report):
-    vg = report["value_gate"]
+def test_variety_gate_passes_with_margins(report):
+    vg = report["variety_gate"]
     assert vg["passed"] is True
     eng, base = vg["engine"], vg["single_shot"]
     # diverse slate beats single-shot by a clear margin on every metric
@@ -66,8 +66,8 @@ def test_state_files_written(report):
 def test_selftest_is_deterministic(home):
     r1 = selftest.run(project="det1", seed=0, home=home)
     r2 = selftest.run(project="det2", seed=0, home=home)
-    assert r1["value_gate"]["engine"] == r2["value_gate"]["engine"]
-    assert r1["value_gate"]["single_shot"] == r2["value_gate"]["single_shot"]
+    assert r1["variety_gate"]["engine"] == r2["variety_gate"]["engine"]
+    assert r1["variety_gate"]["single_shot"] == r2["variety_gate"]["single_shot"]
     assert (
         r1["collapse_reversal"]["collapsed_monitor"]["mean_cosine"]
         == r2["collapse_reversal"]["collapsed_monitor"]["mean_cosine"]
