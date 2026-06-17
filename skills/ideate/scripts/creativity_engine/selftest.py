@@ -268,6 +268,51 @@ def _null_check(spec, settings, embedder, seed, trials=50, eps=0.02):
     }
 
 
+def _value_elite_wins_niche(axes, seed, home, project) -> Dict[str, Any]:
+    """The variety gate's first VALUE assertion: higher fitness wins its niche.
+
+    Two candidates share an identical descriptor (so they map to the **same**
+    niche) but differ only in ``fitness`` (1.2 vs 0.9, both inside the
+    ``[0.7,1.3]`` clip) and in ``text`` (so neither is deduped away). The engine
+    must make the higher-fitness candidate the niche elite and surface it on the
+    slate. The **sanity swap** — flipping the two fitness values on a fresh project
+    — must flip which id is the elite, proving the check exercises the real fitness
+    path (``archive.place``'s elite rule), not candidate order or id. This asserts
+    only the EXISTING low-weight within-niche fitness behavior; it adds no new
+    value power and never touches selection geometry.
+    """
+    descriptor = {
+        "angle": "growth", "scope": "global", "form": "campaign",
+        "boldness": 0.3, "mechanism": "referral incentives",
+    }
+
+    def _elite_on_slate(fit_hi: float, fit_lo: float, proj: str):
+        # Same descriptor -> same niche; distinct text -> both survive dedup.
+        cands = [
+            {"id": "hi", "text": "A storefront loyalty rebate paid in store credit",
+             "descriptor": dict(descriptor), "fitness": fit_hi},
+            {"id": "lo", "text": "A weekend pop-up market with neighborhood vendors",
+             "descriptor": dict(descriptor), "fitness": fit_lo},
+        ]
+        pipeline.init_project(proj, axes, seed=seed, home=home)
+        res = pipeline.ingest(proj, cands, axes, seed=seed, home=home)
+        slate_ids = [s["id"] for s in res["slate"]]
+        elite_id = slate_ids[0] if slate_ids else None  # one niche -> one elite
+        return elite_id, slate_ids
+
+    norm_elite, norm_slate = _elite_on_slate(1.2, 0.9, f"{project}-value")
+    swap_elite, _ = _elite_on_slate(0.9, 1.2, f"{project}-value-swap")
+    passed = bool(
+        norm_elite == "hi" and "hi" in norm_slate and swap_elite == "lo"
+    )
+    return {
+        "normal_elite": norm_elite,
+        "swapped_elite": swap_elite,
+        "high_fitness_on_slate": "hi" in norm_slate,
+        "passed": passed,
+    }
+
+
 def _live_semantic_check(live: bool) -> Dict[str, Any]:
     """Under the real embedder, a paraphrase must beat an unrelated sentence.
 
@@ -437,6 +482,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         )
 
         null_check = _null_check(spec, settings, embedder, seed)
+        value_check = _value_elite_wins_niche(axes, seed, home, project)
 
         variety_gate = {
             "engine": engine_metrics,
@@ -444,11 +490,14 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             "dpp_on_pool": dpp_metrics,
             "first_n_on_pool": firstn_metrics,
             "null_check": null_check,
-            # This gate validates VARIETY geometry only. State plainly what it does
-            # not cover so the name can't be mistaken for a value/originality gate.
+            "value_check": value_check,
+            # This gate validates VARIETY geometry plus one narrow VALUE assertion
+            # (higher within-niche fitness wins its niche). State plainly what is
+            # still uncovered so the name can't be mistaken for a full value gate.
             "coverage_gaps": [
-                "originality: no external referent is checked",
-                "value: fitness is not asserted (see Item 5)",
+                "originality: no external referent is checked (advisory probe only)",
+                "value: partial — higher within-niche fitness is asserted to win "
+                "its niche; cross-niche value (which niches matter) is unguarded",
             ],
             "checks": {
                 "mpd_beats_single_shot": engine_metrics["mean_pairwise_distance"]
@@ -462,6 +511,9 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
                 > firstn_metrics["mean_pairwise_distance_avg"],
                 # DPP doesn't regress below random when there's nothing to gain
                 "null_no_regression": null_check["passed"],
+                # first VALUE check: higher within-niche fitness wins its niche
+                # (and the swap sanity flips the elite). See _value_elite_wins_niche.
+                "value_elite_wins_niche": value_check["passed"],
             },
         }
         variety_gate["passed"] = all(variety_gate["checks"].values())
@@ -504,11 +556,20 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
 
 
 def _stub_human(pipeline, project, result, home) -> None:
-    """Auto-pick the highest-novelty idea; record a comparison and a pin."""
+    """Pick the best idea by a blend of judge ``fitness`` and intra-session ``novelty``.
+
+    Ranks each slate item by ``0.5 * fitness + 0.5 * novelty`` (previously novelty
+    alone), so the stubbed human models *value* as well as variety — letting the
+    gate catch a value regression rather than only a diversity one. Records a
+    comparison (winner vs loser) and pins the winner.
+    """
     slate = result.get("slate", [])
     if len(slate) < 2:
         return
-    ranked = sorted(slate, key=lambda s: s.get("novelty", 0.0))
+    ranked = sorted(
+        slate,
+        key=lambda s: 0.5 * s.get("fitness", 1.0) + 0.5 * s.get("novelty", 0.0),
+    )
     winner, loser = ranked[-1]["id"], ranked[0]["id"]
     pipeline.remember(
         project, {"type": "comparison", "winner": winner, "loser": loser}, home=home
