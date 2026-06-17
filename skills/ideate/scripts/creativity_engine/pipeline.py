@@ -135,7 +135,11 @@ def _parse_candidates(candidates) -> List[Candidate]:
 def _survivor_novelty(
     surv_vecs: np.ndarray, existing_vecs: np.ndarray, k: int
 ) -> np.ndarray:
-    """Mean k-NN distance of each survivor to (existing ∪ other survivors)."""
+    """Mean k-NN distance of each survivor to (existing ∪ other survivors).
+
+    novelty = mean k-NN distance to this session's own elites + batch; a variety
+    proxy, NOT originality vs. prior art (no external referent is consulted).
+    """
     n = surv_vecs.shape[0]
     if n == 0:
         return np.zeros((0,), dtype=np.float32)
@@ -153,6 +157,13 @@ def _survivor_novelty(
 
 
 def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Shape one elite record into a slate item for the agent/human.
+
+    The ``novelty`` field carried here is a variety proxy — mean k-NN distance to
+    this session's own elites + batch — NOT originality vs. prior art. The key is
+    deliberately left named ``novelty``: consumers (the skill, the stubbed human)
+    read it, so it is documented rather than renamed.
+    """
     return {
         "id": record["id"],
         "text": record.get("text", ""),
@@ -704,7 +715,11 @@ def remember(project: str, event: Dict[str, Any],
 
 def parents(project: str, k: int = 4, seed: int = 0,
             home: Optional[Path] = None) -> Dict[str, Any]:
-    """Diverse parents for the next generation; pinned stepping stones kept."""
+    """Diverse parents for the next generation; pinned stepping stones kept.
+
+    Each parent's ``novelty`` is the same variety proxy as on the slate (mean k-NN
+    distance to this session's own elites + batch), NOT originality vs. prior art.
+    """
     sess = Session(project, home=home, seed=seed)
     arc = archive_mod.Archive.from_dict(sess.spec, sess.state.read_archive())
     stored_emb = sess.state.read_embeddings()

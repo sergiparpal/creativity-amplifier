@@ -71,7 +71,11 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    `ENGINE ingest --project PROJECT --candidates $TMP/candidates.json --axes $TMP/axes.json`.
 7. **Present** the returned `slate` (show each idea with its niche `coords` so the
    user can judge distinctness). Ask only the returned `ask_pairs` as short
-   A-vs-B questions. Let the user pin "stepping stones".
+   A-vs-B questions. Let the user pin "stepping stones". Note on the `novelty`
+   field: it is **mean k-NN distance to this session's own ideas (elites + this
+   batch)** — a *variety* proxy, NOT originality vs. prior art / the world. Read a
+   high `novelty` as "unlike the other ideas in this run", and don't present it to
+   the user as proof an idea is novel to the world.
 8. **Record & continue.** For each answer/pin run `ENGINE remember`; then
    `ENGINE parents` to get diverse parents and loop from step 4, or stop on the
    user's command.

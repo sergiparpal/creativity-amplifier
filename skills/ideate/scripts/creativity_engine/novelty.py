@@ -3,6 +3,12 @@
 Novelty is **decoupled from the judge** — it is a pure property of where a point
 sits relative to others. A point far from its neighbors is novel; a point in a
 crowd is not. This is the only thing that owns "is this new?".
+
+Scope, stated honestly: ``novelty`` = mean k-NN distance to this session's own
+elites + batch; a **variety proxy**, NOT originality vs. prior art. The reference
+set is only the points generated so far — there is no external/world referent
+here, so a high ``novelty`` means "unlike the other ideas in this run", not "novel
+to the world".
 """
 
 from __future__ import annotations
