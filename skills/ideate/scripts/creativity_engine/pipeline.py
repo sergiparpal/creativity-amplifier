@@ -601,11 +601,15 @@ def ingest(
         max_dpp_pool=econfig.max_dpp_pool, quality_weight=econfig.quality_weight,
     )
 
+    # Read meta once: nothing rewrites it until _persist_cycle at the end, so the
+    # rolling baseline and the per-generation target both come from one snapshot.
+    meta_now = state.read_meta()
+
     # Monitor the RAW generation (pre-dedup) so a near-duplicate batch still
     # registers as collapsing — dedup would otherwise hide it behind survivors.
     # The baseline is the rolling window of prior generations' mean cosine, so the
     # similarity flag is calibrated to this project rather than a fixed constant.
-    baseline = list(state.read_meta().get("cos_window", []))
+    baseline = list(meta_now.get("cos_window", []))
     mon = monitor.evaluate(
         vecs, arc.niche_counts(), baseline=baseline,
         cos_threshold=econfig.monitor_cos_threshold,
@@ -624,7 +628,7 @@ def ingest(
     # / prefilters less next round. Sensor is at the submitted-vs-target boundary,
     # NOT post-dedup survivors (dedup is the engine's own job, not the agent's).
     # This NEVER affects `collapsing` or the calibration window — purely advisory.
-    target = int(state.read_meta().get("candidates_per_generation", 0) or 0)
+    target = int(meta_now.get("candidates_per_generation", 0) or 0)
     submitted = len(cand_list)
     mon["submitted"] = submitted
     mon["target_candidates"] = target

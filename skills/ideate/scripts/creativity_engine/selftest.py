@@ -41,6 +41,10 @@ from .state import State
 # Margins the variety gate must clear on the seeded fixture.
 MARGIN_MPD = 0.10
 MARGIN_VENDI = 0.5
+# Small explicit margin for the DPP-vs-first-N comparison so it matches the
+# discipline of the other gate checks (no marginless float comparison that could go
+# flaky if the averages converge). The observed gap is ~0.09, well above this.
+MARGIN_DPP = 0.01
 
 # Generations the diverse loop runs before its slate is measured.
 SELFTEST_CYCLES = 2
@@ -508,7 +512,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
                 > base_metrics["niche_entropy"],
                 # averaged over shuffled seeds, so it isn't an artifact of pool order
                 "dpp_beats_first_n": dpp_metrics["mean_pairwise_distance_avg"]
-                > firstn_metrics["mean_pairwise_distance_avg"],
+                > firstn_metrics["mean_pairwise_distance_avg"] + MARGIN_DPP,
                 # DPP doesn't regress below random when there's nothing to gain
                 "null_no_regression": null_check["passed"],
                 # first VALUE check: higher within-niche fitness wins its niche

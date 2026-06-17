@@ -16,6 +16,7 @@ already-diverse niche.
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -140,6 +141,10 @@ def continuous_bin(axis: Axis, value: Any) -> int:
     try:
         v = float(value)
     except (TypeError, ValueError):
+        return 0
+    # A non-finite value (NaN/inf, e.g. an agent emitting "nan") would make
+    # ``int(frac * bins)`` raise; treat it as an out-of-range value -> bin 0.
+    if not math.isfinite(v):
         return 0
     if hi <= lo:
         return 0

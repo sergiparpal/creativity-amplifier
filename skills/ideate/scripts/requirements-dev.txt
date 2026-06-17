@@ -1,0 +1,9 @@
+# Developer/test dependencies. Kept OUT of requirements.txt so end-user installs
+# (built by bootstrap.py from requirements.txt) don't ship the test runner.
+#
+#   pip install -r requirements-dev.txt
+#
+# bootstrap.py installs this automatically in editable/dev mode (setup.sh), and CI
+# installs it before running the suite.
+-r requirements.txt
+pytest>=8,<9

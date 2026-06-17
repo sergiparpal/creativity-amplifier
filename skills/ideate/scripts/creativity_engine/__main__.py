@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from typing import Any
 
@@ -71,7 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
 def _read_json_file(path: str) -> Any:
     from pathlib import Path
 
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        # Identify which path failed — ingest reads both --candidates and --axes.
+        raise config.ConfigError(f"could not read JSON from {path}: {exc}") from exc
 
 
 def main(argv=None) -> int:
@@ -109,7 +112,7 @@ def main(argv=None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:  # surface a clean message, non-zero exit
-        if os.environ.get("CREATIVITY_DEBUG"):
+        if config.debug_enabled():
             raise  # full traceback for diagnosis when debugging
         print(f"error: {exc}", file=sys.stderr)
         return 1

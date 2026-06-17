@@ -240,9 +240,15 @@ pressure rises). Treat a `selftest` failure as a real regression in the diversit
 
 ## Conventions & gotchas
 
-- **`requirements.txt` is the single source of truth for dependencies.** `pyproject.toml` keeps
-  `dependencies = []` on purpose; `setup.sh` runs `pip install -r requirements.txt` then
-  `pip install -e . --no-deps`.
+- **`requirements*.txt` are the source of truth for dependencies** (`pyproject.toml` keeps
+  `dependencies = []` on purpose). `requirements.txt` is **runtime only** and what end-user
+  background installs build from; `requirements-dev.txt` (`-r requirements.txt` + `pytest`) adds the
+  test runner and is what `bootstrap.py` installs in editable/dev mode and what CI installs.
+  `requirements-local.txt` is the opt-in torch `local` embedder. Deps are **compatible-release
+  bounded** (`numpy>=1.26,<3`, …) — lower bound = minimum tested, upper bound = the next *untested*
+  major, so an auto-provisioned install never silently adopts a breaking major; bump caps
+  deliberately. `setup.sh` just execs `bootstrap.py`, which resolves runtime-vs-dev and runs
+  `pip install -r <reqs>` then `pip install -e . --no-deps`.
 - Tests are hermetic via `tests/conftest.py` (forces `CREATIVITY_EMBEDDER=hash` and an isolated
   `CREATIVITY_AMPLIFIER_HOME`). Keep new tests offline — never trigger a model download.
 - Determinism matters: niching/DPP/CVT take a `--seed`; reuse it across a session's cycles.

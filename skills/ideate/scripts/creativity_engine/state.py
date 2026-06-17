@@ -22,17 +22,30 @@ separate.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .config import ConfigError
 
 DEFAULT_HOME_ENV = "CREATIVITY_AMPLIFIER_HOME"
 _DEFAULT_BASE = "~/.creativity-amplifier"
 
 _PATH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+# Best-effort cross-process lock (atomic mkdir works on every target OS) used to
+# serialize read-modify-write on the small per-domain files (pins). Tuned for the
+# realistic "two /ideate sessions on one project" race, not high contention.
+_LOCK_TIMEOUT = 10.0   # seconds to wait for the lock before proceeding anyway
+_LOCK_STALE = 60.0     # a lock dir older than this is assumed abandoned (crash)
+_LOCK_POLL = 0.05
+# Orphaned atomic-write temp files older than this are swept on State.ensure().
+_STALE_TEMP_SECS = 3600.0
 
 
 def _path_slug(name: str, fallback: str = "default") -> str:
@@ -53,10 +66,53 @@ def _atomic_write(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
+            # Flush + fsync before the rename so a crash can't persist the rename
+            # ahead of the data (which would leave a zero-length/stale file).
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+@contextlib.contextmanager
+def _file_lock(target: Path, timeout: float = _LOCK_TIMEOUT):
+    """Best-effort cross-process lock guarding a read-modify-write on ``target``.
+
+    Uses an atomic ``mkdir`` of a sibling ``<name>.lock`` directory (atomic on
+    POSIX and Windows). Steals a lock older than ``_LOCK_STALE`` (a crashed
+    holder). If the lock can't be acquired within ``timeout`` we proceed anyway
+    rather than deadlock — the protected section is then no worse than the
+    historical unlocked behavior.
+    """
+    lock = target.parent / (target.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + max(0.0, timeout)
+    acquired = False
+    while True:
+        try:
+            lock.mkdir()
+            acquired = True
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lock.stat().st_mtime
+            except OSError:
+                age = 0.0
+            if age > _LOCK_STALE:
+                with contextlib.suppress(OSError):
+                    lock.rmdir()
+                continue
+            if time.monotonic() >= deadline:
+                break  # give up; proceed unlocked
+            time.sleep(_LOCK_POLL)
+    try:
+        yield
+    finally:
+        if acquired:
+            with contextlib.suppress(OSError):
+                lock.rmdir()
 
 
 class State:
@@ -115,7 +171,22 @@ class State:
     def ensure(self) -> "State":
         self.root.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        self._sweep_stale_temps()
         return self
+
+    def _sweep_stale_temps(self) -> None:
+        """Remove orphaned atomic-write temp files. A crash between ``mkstemp``
+        and ``os.replace`` leaves a ``.tmp-*`` file behind; sweep old ones so they
+        don't accumulate. Best-effort: races and errors are ignored."""
+        cutoff = time.time() - _STALE_TEMP_SECS
+        try:
+            entries = list(self.root.glob(".tmp-*"))
+        except OSError:
+            return
+        for p in entries:
+            with contextlib.suppress(OSError):
+                if p.is_file() and p.stat().st_mtime < cutoff:
+                    p.unlink()
 
     def paths(self) -> Dict[str, str]:
         return {
@@ -132,7 +203,20 @@ class State:
     def read_json(self, path: Path, default: Any = None) -> Any:
         if not path.exists():
             return default
-        return json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            # Empty file (e.g. an interrupted write) — treat as absent rather
+            # than crash the command; the next write repopulates it.
+            return default
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            # A non-empty but corrupt state file is surfaced as a clean,
+            # operator-facing error instead of a raw traceback.
+            raise ConfigError(
+                f"state file {path} is corrupt ({exc}); remove it (or restore a "
+                f"backup) and retry"
+            ) from exc
 
     def write_json(self, path: Path, obj: Any) -> None:
         _atomic_write(path, json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=True))
@@ -179,8 +263,16 @@ class State:
     def append_comparison(self, domain: str, event: Dict[str, Any]) -> None:
         path = self.comparisons_path(domain)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+        line = json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n"
+        # Single O_APPEND write (not buffered text I/O): under POSIX O_APPEND each
+        # write lands atomically at end-of-file, so concurrent appenders can't
+        # interleave a short line. read_comparisons also tolerates a torn line.
+        data = line.encode("utf-8")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
 
     def read_comparisons(self, domain: str) -> List[Dict[str, Any]]:
         path = self.comparisons_path(domain)
@@ -189,8 +281,14 @@ class State:
         out: List[Dict[str, Any]] = []
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 out.append(json.loads(line))
+            except json.JSONDecodeError:
+                # Skip a truncated/corrupt line (e.g. an interrupted append) so a
+                # single bad record can't poison every future read of this domain.
+                continue
         return out
 
     def read_pins(self, domain: str) -> List[str]:
@@ -200,8 +298,13 @@ class State:
         self.write_json(self.pins_path(domain), pins)
 
     def add_pin(self, domain: str, candidate_id: str) -> List[str]:
-        pins = self.read_pins(domain)
-        if candidate_id not in pins:
-            pins.append(candidate_id)
-            self.write_pins(domain, pins)
-        return pins
+        # Lock the read-modify-write so two concurrent invocations can't each read
+        # the same list and clobber the other's pin (pins are "never dropped").
+        path = self.pins_path(domain)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _file_lock(path):
+            pins = self.read_pins(domain)
+            if candidate_id not in pins:
+                pins.append(candidate_id)
+                self.write_pins(domain, pins)
+            return pins

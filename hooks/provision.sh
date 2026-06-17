@@ -19,11 +19,11 @@ fi
 BOOT="$ROOT/skills/ideate/scripts/bootstrap.py"
 [ -f "$BOOT" ] || exit 0
 
-# Fast path: already provisioned in the persistent data venv? Skip without a Python spawn.
-DATA="${CLAUDE_PLUGIN_DATA:-}"
-if [ -n "$DATA" ] && [ -f "$DATA/venv/engine-python.txt" ]; then
-  exit 0
-fi
+# NB: no pointer-only fast path here. The interpreter pointer (engine-python.txt)
+# survives a plugin update that changes dependencies, so short-circuiting on its
+# existence would skip the background rebuild on exactly the update case it's meant
+# to handle. Instead always hand off to `bootstrap.py --background`, which checks the
+# content STAMP (the real freshness gate) and returns in milliseconds when current.
 
 # Find a Python >= 3.11. Prefer names likely to be a real CPython on each OS.
 PY=""

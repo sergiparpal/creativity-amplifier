@@ -15,6 +15,8 @@ The engine never assumes a domain — every command receives the resolved axes.
 from __future__ import annotations
 
 import json
+import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -32,6 +34,18 @@ AXIS_TYPES = ("categorical", "continuous", "open")
 
 class ConfigError(ValueError):
     """Raised when an axes spec is malformed. Message is user-facing."""
+
+
+def debug_enabled() -> bool:
+    """Whether ``CREATIVITY_DEBUG`` requests full tracebacks instead of clean errors.
+
+    Treats unset/empty and the explicit off-values ``0``/``false``/``no``/``off``
+    as disabled, so ``CREATIVITY_DEBUG=0`` doesn't accidentally *enable* debugging
+    (a bare ``os.environ.get`` would, since ``"0"`` is truthy).
+    """
+    return os.environ.get("CREATIVITY_DEBUG", "").strip().lower() not in (
+        "", "0", "false", "no", "off",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +162,10 @@ class SessionSettings:
             raise ConfigError(
                 f"settings must be an object, got {type(d).__name__}"
             )
-        per_gen = int(d.get("candidates_per_generation", 12))
+        try:
+            per_gen = int(d.get("candidates_per_generation", 12))
+        except (TypeError, ValueError):
+            raise ConfigError("'candidates_per_generation' must be an integer")
         if per_gen < 1:
             raise ConfigError("'candidates_per_generation' must be >= 1")
         return cls(
@@ -357,6 +374,10 @@ class Candidate:
             fitness = float(fitness)
         except (TypeError, ValueError):
             raise ConfigError(f"candidate {cid!r} 'fitness' must be a number")
+        if not math.isfinite(fitness):
+            # A non-finite fitness (NaN/inf) silently poisons elite selection
+            # (NaN comparisons are always False) and the DPP quality kernel.
+            raise ConfigError(f"candidate {cid!r} 'fitness' must be finite")
         return cls(id=cid, text=text, descriptor=descriptor,
                    genealogy=genealogy, fitness=fitness)
 
@@ -442,7 +463,10 @@ def _axis_from_dict(d: Any) -> Axis:
     elif "range" in d and d["range"] is not None:
         arange = _coerce_range(d["range"], name)
     primary = bool(d.get("primary_novelty", False))
-    bins = int(d.get("bins", 5))
+    try:
+        bins = int(d.get("bins", 5))
+    except (TypeError, ValueError):
+        raise ConfigError(f"axis {name!r}: 'bins' must be an integer")
     if bins < 1:
         raise ConfigError(f"axis {name!r}: 'bins' must be >= 1")
     return Axis(name=name, type=atype, range=arange,
@@ -469,7 +493,10 @@ def axes_spec_from_dict(d: Dict[str, Any]) -> AxesSpec:
             f"{n_primary} did"
         )
 
-    slate = int(d.get("slate_size", 6))
+    try:
+        slate = int(d.get("slate_size", 6))
+    except (TypeError, ValueError):
+        raise ConfigError("'slate_size' must be an integer")
     if slate < 1:
         raise ConfigError("'slate_size' must be >= 1")
 

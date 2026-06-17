@@ -54,6 +54,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import venv
 from pathlib import Path
@@ -61,6 +62,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent      # skills/ideate/scripts
 SKILL_DIR = SCRIPT_DIR.parent                     # skills/ideate
 REQS = SCRIPT_DIR / "requirements.txt"
+REQS_DEV = SCRIPT_DIR / "requirements-dev.txt"  # editable/dev installs only (adds pytest)
 PYPROJECT = SCRIPT_DIR / "pyproject.toml"
 ENGINE_PKG = SCRIPT_DIR / "creativity_engine"
 
@@ -173,7 +175,16 @@ def try_acquire(venv_dir: Path) -> bool:
         except OSError:
             age = 0.0
         if age > STALE_LOCK_SECS:
-            shutil.rmtree(lock, ignore_errors=True)
+            # Steal atomically: renaming a directory is atomic, so exactly one
+            # racer can move the stale lock aside (the loser gets the lock already
+            # gone and backs off). rmtree+mkdir alone is not atomic together — two
+            # simultaneous stealers could both proceed.
+            sidelined = lock.parent / f"{LOCK_NAME}.stale-{os.getpid()}"
+            try:
+                os.replace(lock, sidelined)
+            except OSError:
+                return False  # lost the steal race; caller re-loops and waits
+            shutil.rmtree(sidelined, ignore_errors=True)
             try:
                 lock.mkdir()
             except OSError:
@@ -226,15 +237,18 @@ def create_venv(venv_dir: Path, uv: str | None) -> Path:
 
 def install_deps(py: Path, uv: str | None, editable: bool) -> None:
     engine_target = ["-e", str(SCRIPT_DIR)] if editable else [str(SCRIPT_DIR)]
+    # In editable/dev mode also install the test tooling so a developer who runs
+    # setup.sh can run the suite immediately; end-user installs get runtime only.
+    reqs = str(REQS_DEV if (editable and REQS_DEV.exists()) else REQS)
     if uv:
         print("[bootstrap] Installing requirements with uv", flush=True)
-        run([uv, "pip", "install", "--python", str(py), "-r", str(REQS)])
+        run([uv, "pip", "install", "--python", str(py), "-r", reqs])
         run([uv, "pip", "install", "--python", str(py), *engine_target, "--no-deps"])
     else:
         print("[bootstrap] Upgrading pip tooling", flush=True)
         run([str(py), "-m", "pip", "install", "--upgrade", "pip", "wheel", "setuptools"])
         print("[bootstrap] Installing requirements with pip", flush=True)
-        run([str(py), "-m", "pip", "install", "-r", str(REQS)])
+        run([str(py), "-m", "pip", "install", "-r", reqs])
         run([str(py), "-m", "pip", "install", *engine_target, "--no-deps"])
 
     print("[bootstrap] Verifying core imports", flush=True)
@@ -243,6 +257,26 @@ def install_deps(py: Path, uv: str | None, editable: bool) -> None:
         "import numpy, sklearn, yaml, creativity_engine; "
         "print('[bootstrap] core imports OK')",
     ])
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Crash-safe text write (temp + fsync + os.replace).
+
+    The pointer/stamp are the engine's readiness gate, so a half-written stamp
+    (crash/disk-full mid-write) must never be left behind — it would either fake
+    "ready" forever or never rebuild. Writing atomically guarantees readers see
+    either the old file or the complete new one.
+    """
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def do_install(venv_dir: Path, stamp: str) -> Path:
@@ -259,8 +293,10 @@ def do_install(venv_dir: Path, stamp: str) -> Path:
 
     # Single source of truth for the skill, on every OS. Forward slashes work in
     # Git Bash, PowerShell, and cmd alike, so the recorded path is shell-agnostic.
-    (venv_dir / PTR_NAME).write_text(py.as_posix(), encoding="utf-8")
-    (venv_dir / STAMP_NAME).write_text(stamp, encoding="utf-8")
+    # Pointer first, then stamp (both atomic): a crash between them never leaves a
+    # matching stamp without a usable interpreter pointer.
+    _atomic_write_text(venv_dir / PTR_NAME, py.as_posix())
+    _atomic_write_text(venv_dir / STAMP_NAME, stamp)
     print(f"[bootstrap] Engine interpreter: {py.as_posix()}", flush=True)
     print(f"[bootstrap] Wrote {venv_dir / PTR_NAME}", flush=True)
     return py
@@ -307,6 +343,18 @@ def provision(venv_dir: Path, *, wait_secs: float) -> int:
         do_install(venv_dir, stamp)
         print("[bootstrap] Done.", flush=True)
         return 0
+    except subprocess.CalledProcessError as exc:
+        # A failed pip/uv/venv command: in the foreground catch-up path (the skill
+        # running /ideate before the background build finished) show a clean,
+        # actionable line instead of a raw traceback. The detached worker logs the
+        # same to provision.log.
+        log_path = venv_dir.parent / LOG_NAME
+        sys.stderr.write(
+            f"[bootstrap] Install step failed (exit {exc.returncode}): "
+            f"{' '.join(str(c) for c in exc.cmd)}\n"
+            f"[bootstrap] See {log_path} for details, then run /ideate again.\n"
+        )
+        return 1
     finally:
         release(venv_dir)
 

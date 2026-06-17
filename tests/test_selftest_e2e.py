@@ -8,6 +8,7 @@ import pytest
 
 from creativity_engine import selftest
 from creativity_engine.__main__ import main
+from creativity_engine.selftest import MARGIN_DPP, MARGIN_MPD, MARGIN_VENDI
 
 
 @pytest.fixture
@@ -25,19 +26,20 @@ def test_variety_gate_passes_with_margins(report):
     vg = report["variety_gate"]
     assert vg["passed"] is True
     eng, base = vg["engine"], vg["single_shot"]
-    # diverse slate beats single-shot by a clear margin on every metric
-    assert eng["mean_pairwise_distance"] > base["mean_pairwise_distance"] + 0.10
-    assert eng["vendi"] > base["vendi"] + 0.5
+    # diverse slate beats single-shot by a clear margin on every metric. Import the
+    # margins from the source so tightening the gate is tracked here, not silently.
+    assert eng["mean_pairwise_distance"] > base["mean_pairwise_distance"] + MARGIN_MPD
+    assert eng["vendi"] > base["vendi"] + MARGIN_VENDI
     assert eng["niche_entropy"] > base["niche_entropy"]
     # DPP selection beats naive first-N on the SAME (shuffled) pool, averaged over
     # seeds — the de-rigged, non-tautological signal of the engine's own value.
     assert (
         vg["dpp_on_pool"]["mean_pairwise_distance_avg"]
-        > vg["first_n_on_pool"]["mean_pairwise_distance_avg"]
+        > vg["first_n_on_pool"]["mean_pairwise_distance_avg"] + MARGIN_DPP
     )
-    # null check: DPP doesn't regress below a random subset on a uniform pool
+    # null check: DPP doesn't regress below a random subset on a uniform pool.
+    # `passed` already encodes the eps tolerance, so just trust the source gate here.
     assert vg["null_check"]["passed"] is True
-    assert vg["null_check"]["dpp_mpd"] >= vg["null_check"]["random_mean_mpd"] - 0.02
     assert all(vg["checks"].values())
 
 
@@ -68,6 +70,10 @@ def test_selftest_is_deterministic(home):
     r2 = selftest.run(project="det2", seed=0, home=home)
     assert r1["variety_gate"]["engine"] == r2["variety_gate"]["engine"]
     assert r1["variety_gate"]["single_shot"] == r2["variety_gate"]["single_shot"]
+    # The seeded-shuffle DPP-on-pool path is the most RNG-dependent output; assert it
+    # reproduces too so the determinism the design relies on is actually guarded.
+    assert r1["variety_gate"]["dpp_on_pool"] == r2["variety_gate"]["dpp_on_pool"]
+    assert r1["variety_gate"]["first_n_on_pool"] == r2["variety_gate"]["first_n_on_pool"]
     assert (
         r1["collapse_reversal"]["collapsed_monitor"]["mean_cosine"]
         == r2["collapse_reversal"]["collapsed_monitor"]["mean_cosine"]

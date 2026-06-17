@@ -12,10 +12,11 @@ prove the diverse slate beats a non-diverse baseline.
 
 from __future__ import annotations
 
-import os
 from typing import List, Optional, Sequence
 
 import numpy as np
+
+from .config import debug_enabled
 
 
 # --------------------------------------------------------------------------- #
@@ -93,12 +94,14 @@ def farthest_point_sampling(
 ) -> List[int]:
     """Max-min cosine-distance greedy selection (also the DPP fallback).
 
-    Returns up to ``k`` indices into ``vecs`` that are mutually far apart, each
-    chosen to maximize its minimum cosine distance to everything picked so far.
+    Returns indices into ``vecs`` that are mutually far apart, each chosen to
+    maximize its minimum cosine distance to everything picked so far.
 
-    ``seeds`` pre-selects indices (kept, order preserved) and seeds the frontier
-    — use it to extend an existing selection. When ``seeds`` is None the walk
-    starts from ``start``. The returned list always begins with the seeds.
+    ``seeds`` pre-selects indices (always kept, order preserved) and seeds the
+    frontier — use it to extend an existing selection. When ``seeds`` is None the
+    walk starts from ``start``. The result begins with the seeds and grows to
+    ``k`` total; if more than ``k`` seeds are given they are all kept (so the
+    length is ``max(k, len(seeds))``), since seeds are never dropped.
     """
     vecs = np.asarray(vecs, dtype=np.float64)
     n = vecs.shape[0]
@@ -186,7 +189,7 @@ def select_diverse(
         # Expected ways the kernel can degenerate (singular/ill-conditioned,
         # ragged input). Fall back to farthest-point, but re-raise under
         # CREATIVITY_DEBUG so a genuine bug isn't masked by the fallback.
-        if os.environ.get("CREATIVITY_DEBUG"):
+        if debug_enabled():
             raise
         return farthest_point_sampling(vecs, k)
 

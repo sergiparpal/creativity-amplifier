@@ -40,12 +40,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: skills/ideate/scripts/requirements.txt
+          cache-dependency-path: skills/ideate/scripts/requirements-dev.txt
 
       - name: Install engine and dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r skills/ideate/scripts/requirements.txt
+          pip install -r skills/ideate/scripts/requirements-dev.txt
           pip install -e skills/ideate/scripts --no-deps
 
       - name: Run test suite (hermetic)
@@ -53,6 +53,43 @@ jobs:
 
       - name: Run engine self-test (correctness contract)
         run: python -m creativity_engine selftest
+
+  bootstrap:
+    # The provisioner (venv build, lock, content stamp, OS-specific interpreter
+    # path) is the most failure-prone cross-platform code and the test job never
+    # exercises it. Smoke-test a real foreground provision + idempotent re-run on
+    # POSIX and Windows. (No model weights download: model2vec pulls weights lazily
+    # at embed time, not install time.)
+    name: bootstrap provisioner (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Provision into a temp venv (first run builds)
+        run: python skills/ideate/scripts/bootstrap.py --venv "$RUNNER_TEMP/engine-venv"
+
+      - name: Readiness markers are written
+        run: |
+          test -f "$RUNNER_TEMP/engine-venv/engine-python.txt"
+          test -f "$RUNNER_TEMP/engine-venv/install.stamp"
+
+      - name: Second run is an idempotent no-op
+        run: |
+          out="$(python skills/ideate/scripts/bootstrap.py --venv "$RUNNER_TEMP/engine-venv")"
+          echo "$out"
+          echo "$out" | grep -q "already provisioned"
 
   validate-plugin:
     name: validate plugin metadata

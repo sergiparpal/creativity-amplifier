@@ -18,9 +18,11 @@ if (-not $root) {
 $boot = Join-Path $root 'skills/ideate/scripts/bootstrap.py'
 if (-not (Test-Path $boot)) { exit 0 }
 
-# Fast path: already provisioned in the persistent data venv? Skip without a Python spawn.
-$data = $env:CLAUDE_PLUGIN_DATA
-if ($data -and (Test-Path (Join-Path $data 'venv/engine-python.txt'))) { exit 0 }
+# NB: no pointer-only fast path here. The interpreter pointer (engine-python.txt)
+# survives a plugin update that changes dependencies, so short-circuiting on its
+# existence would skip the background rebuild on exactly the update case. Instead
+# always hand off to `bootstrap.py --background`, which checks the content STAMP
+# (the real freshness gate) and returns in milliseconds when current.
 
 # Find a Python >= 3.11. `py` (the Windows launcher) and `python` come first.
 $py = $null

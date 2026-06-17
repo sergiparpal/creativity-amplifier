@@ -78,8 +78,13 @@ def recall(state: State, domain: str, k: int = 10) -> Dict[str, Any]:
     losses: Counter = Counter()
     for ev in comparisons:
         if ev.get("type") == "comparison":
-            wins[ev.get("winner")] += 1
-            losses[ev.get("loser")] += 1
+            # Guard against schema-drifted/partial records so a missing winner or
+            # loser can't be tallied as a ``None`` candidate in the summary.
+            winner, loser = ev.get("winner"), ev.get("loser")
+            if winner:
+                wins[winner] += 1
+            if loser:
+                losses[loser] += 1
 
     # preferred descriptor values, learned from winners (if candidate records exist)
     cand_store = state.read_candidates()
@@ -111,7 +116,9 @@ def _compared_set(comparisons: Sequence[Dict[str, Any]]) -> Set[frozenset]:
     out: Set[frozenset] = set()
     for ev in comparisons:
         if ev.get("type") == "comparison":
-            out.add(frozenset({ev.get("winner"), ev.get("loser")}))
+            winner, loser = ev.get("winner"), ev.get("loser")
+            if winner and loser:
+                out.add(frozenset({winner, loser}))
     return out
 
 
@@ -150,7 +157,9 @@ def select_ask_pairs(
                 continue  # already resolved by the user
             va = emb_by_id.get(ida)
             vb = emb_by_id.get(idb)
-            if va is None or vb is None:
+            if va is None or vb is None or len(va) != len(vb):
+                # Missing, or mismatched width across an embedder switch — treat as
+                # uninformative rather than letting np.dot raise and abort selection.
                 sim = 0.0
             else:
                 sim = float(np.dot(np.asarray(va), np.asarray(vb)))
