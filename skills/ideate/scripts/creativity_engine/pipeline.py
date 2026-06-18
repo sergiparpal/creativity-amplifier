@@ -504,6 +504,8 @@ def _persist_cycle(
     embedder,
     mon: Dict[str, Any],
     econfig: "config.EngineConfig",
+    novelty_window: List[float],
+    erosion_streak: int,
 ) -> None:
     """Write archive/embeddings/candidates, bump cycle metadata, roll the window."""
     state.write_archive(arc.to_dict())
@@ -527,6 +529,10 @@ def _persist_cycle(
         cos_window = list(meta.get("cos_window", []))
         cos_window.append(float(mon["mean_cosine"]))
         meta["cos_window"] = cos_window[-econfig.monitor_window:]
+    # S2 — persist the variety-erosion sensor's OWN state, independent of the
+    # cos_window calibration roll above. Already rolled/truncated by the assessor.
+    meta["novelty_window"] = list(novelty_window)
+    meta["erosion_streak"] = int(erosion_streak)
     state.write_meta(meta)
 
 
@@ -583,6 +589,9 @@ def ingest(
         embedder, seed, nicher=frozen_nicher, open_niches=econfig.open_niches,
     )
     novelties = _survivor_novelty(surv_vecs, existing_vecs, econfig.knn_k)
+    # S2 — per-generation survivor mean novelty, fed to the variety-erosion sensor
+    # below (a separate, post-dedup series; the monitor still runs on RAW vectors).
+    surv_mean_novelty = float(np.mean(novelties)) if novelties.size else None
     _place_survivors(
         survivors, surv_vecs, cells, novelties, open_axis,
         spec, arc, cand_store, stored_emb,
@@ -642,6 +651,29 @@ def ingest(
     else:
         mon["under_generation"] = False
 
+    # S2 — variety-erosion sensor (advisory). Feeds the post-dedup survivor mean
+    # novelty through the acceleration-of-decay assessor and attaches an advisory
+    # flag to `mon`. It NEVER sets or influences `collapsing`, never touches the
+    # monitor's calibration window (`cos_window`), and keeps its OWN series
+    # (`novelty_window`) and streak counter (`erosion_streak`). It only reports.
+    erosion = monitor.assess_variety_erosion(
+        meta_now.get("novelty_window", []),
+        int(meta_now.get("erosion_streak", 0)),
+        surv_mean_novelty,
+        submitted_healthy=not mon["under_generation"],
+        window=econfig.erosion_window,
+        accel_ratio=econfig.erosion_accel_ratio,
+        persist=econfig.erosion_persist,
+    )
+    mon["variety_eroding"] = erosion["variety_eroding"]
+    mon["variety_erosion"] = {  # advisory detail; never gates anything
+        "streak": erosion["erosion_streak"],
+        "slope_earlier": erosion["slope_earlier"],
+        "slope_recent": erosion["slope_recent"],
+        "note": "advisory; acceleration of survivor-novelty decay with healthy submits; "
+                "never affects collapsing or the calibration window",
+    }
+
     # Namespace preference memory by the session domain so ingest is consistent
     # with remember/recall/parents (all share Session's snapshot resolution).
     domain = sess.domain
@@ -679,7 +711,10 @@ def ingest(
             keep_ids.update(i for i in (ev.get("winner"), ev.get("loser")) if i)
     _maybe_prune_state(cand_store, stored_emb, keep_ids, econfig.state_prune_threshold)
 
-    _persist_cycle(state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig)
+    _persist_cycle(
+        state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig,
+        erosion["novelty_window"], erosion["erosion_streak"],
+    )
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,
