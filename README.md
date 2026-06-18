@@ -36,7 +36,12 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   occupancy + mean pairwise cosine flag convergence; the similarity signal is
   **calibrated to a rolling baseline** (and the dedup threshold is per-embedder),
   so it doesn't misfire when the embedder or domain changes. When it fires, the
-  skill raises diversity pressure next round.
+  skill raises diversity pressure next round. Two **advisory** sensors back it up
+  without ever touching its verdict or the selection geometry: a **prefilter
+  guard** that flags when the agent submits too few candidates (possible
+  over-prefiltering), and a **variety-erosion** sensor that flags when survivor
+  novelty starts *decaying faster over time* — the signature of a generator
+  quietly regressing to the mode. Both only nudge the skill to widen the search.
 - **Axes resolved per session.** "Domain-agnostic" doesn't remove the need for
   descriptor axes — it resolves them per session (named domain → inferred &
   confirmed → generic fallback). Nothing about a domain is baked into the plugin.
@@ -187,9 +192,14 @@ above; this is the same loop with the internals. The skill follows
    partition** — deterministic cold-start cells that fit once via k-means and then
    freeze, so niche ids stay stable), scored for novelty, kept one-elite-per-niche,
    and a **DPP** picks a quality-weighted diverse slate (geometry dominates; the
-   judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs.
+   judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs,
+   plus the two **advisory** sensors (prefilter guard + variety erosion) that ask the
+   skill to widen the search without ever influencing selection.
 5. **Select (you).** Claude shows the slate with each idea's niche coordinates and
-   asks only the most-informative A-vs-B pairs. You can **pin** stepping stones.
+   asks only the most-informative A-vs-B pairs. You can **pin** stepping stones. *(The
+   pair policy is tunable: by default it favors **similar**, boundary-clarifying pairs
+   to learn your preference; an opt-in `explore_until_generation` schedule asks
+   **region-separating** pairs in the first few generations, then switches to refine.)*
 6. **Remember & loop.** Choices/pins go to local preference memory (namespaced per
    domain); diverse parents seed the next generation.
 
@@ -215,8 +225,10 @@ candidates_per_generation: 12
 Then a user who says "name ideas (naming)" gets these axes; everyone else gets
 inferred-or-generic axes. See `references/axis_inference.md` for how inference
 works. A template may also carry an optional `engine:` block to override tuning
-knobs (open-niche count, dedup τ, quality weight, monitor thresholds, …) per
-domain — defaults reproduce the standard behavior; see `_schema.md` for the keys.
+knobs (open-niche count, dedup τ, quality weight, monitor thresholds,
+variety-erosion window/persistence, ask-pair policy & `explore_until_generation`
+schedule, …) per domain — defaults reproduce the standard behavior; see
+`_schema.md` for the keys.
 
 ## The engine CLI (for the curious / for tests)
 
@@ -227,11 +239,12 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 | Command | Does |
 | :-- | :-- |
 | `init-project` | create state dirs, snapshot the resolved axes + session settings |
+| `paths` | ensure the project state dir (incl. its `tmp/` scratch dir) + return resolved paths |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor |
 | `remember` | append a comparison/pin to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
-| `metrics` | current archive health (entropy, mean cosine, coverage, n) |
+| `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
 | `selftest` | full loop with a stubbed LLM + human; variety gate + collapse reversal |
 
 Runtime state is written **outside** the plugin (so reinstalls don't wipe it):
