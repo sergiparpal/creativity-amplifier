@@ -646,14 +646,28 @@ def ingest(
     # with remember/recall/parents (all share Session's snapshot resolution).
     domain = sess.domain
     comparisons = state.read_comparisons(domain)
+    # S3 — generation-aware ask-policy. gen_index is meta_now["cycles"], read before
+    # _persist_cycle increments it, so the first ingest is generation 0. With the
+    # schedule off (explore_until_generation == 0) this is exactly ask_sim_weight.
+    gen_index = int(meta_now.get("cycles", 0))
+    eff_sim = econfig.ask_sim_weight_for_generation(gen_index)
     ask_pairs = memory.select_ask_pairs(
         slate, stored_emb, comparisons, max_pairs=2,
         weights=(
-            econfig.ask_sim_weight,
+            eff_sim,
             econfig.ask_uncertainty_weight,
             econfig.ask_novelty_weight,
         ),
     )
+    in_explore = (
+        econfig.explore_until_generation > 0
+        and gen_index < econfig.explore_until_generation
+    )
+    ask_policy = {
+        "generation": gen_index,
+        "phase": "explore" if in_explore else "refine",
+        "ask_sim_weight_effective": eff_sim,
+    }
 
     # State hygiene (long sessions): drop candidate records/embeddings nothing reads
     # again. Keep set = archive elites + pins + comparison ids — exactly what
@@ -669,6 +683,7 @@ def ingest(
     return {
         "slate": slate,
         "ask_pairs": ask_pairs,
+        "ask_policy": ask_policy,
         "monitor": mon,
         "parents": slate_ids,
         "open_axis": _open_axis_status(
