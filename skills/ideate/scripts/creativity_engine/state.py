@@ -23,15 +23,20 @@ separate.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
+import logging
 import os
 import re
+import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import ConfigError
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_HOME_ENV = "CREATIVITY_AMPLIFIER_HOME"
 _DEFAULT_BASE = "~/.creativity-amplifier"
@@ -49,15 +54,51 @@ _STALE_TEMP_SECS = 3600.0
 
 
 def _path_slug(name: str, fallback: str = "default") -> str:
-    """Filesystem-safe slug for a project or domain id."""
-    s = _PATH_SLUG_RE.sub("-", str(name).strip()).strip("-_.")
-    return s or fallback
+    """Filesystem-safe slug for a project or domain id.
+
+    A name that is already a valid slug round-trips unchanged, so existing state
+    dirs (the common case: plain ASCII ids) are preserved exactly. When slugging is
+    *lossy* — characters were replaced/stripped, or a non-ASCII-only id reduces to
+    ``fallback`` — distinct names could otherwise collide on one slug and silently
+    merge state (e.g. every non-ASCII id -> ``"default"``, or ``"proj A"`` and
+    ``"proj-A"`` -> the same dir). In that case we append a short hash of the raw
+    name so different ids can never share a directory.
+    """
+    raw = str(name)
+    s = _PATH_SLUG_RE.sub("-", raw.strip()).strip("-_.")
+    if s == raw:
+        return s  # already a clean slug: unchanged, backward-compatible
+    suffix = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    return f"{s or fallback}-{suffix}"
 
 
 def base_dir() -> Path:
     env = os.environ.get(DEFAULT_HOME_ENV)
     root = Path(env) if env else Path(_DEFAULT_BASE)
     return root.expanduser()
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Best-effort fsync of a directory so a rename is durable across a crash.
+
+    ``os.fsync`` on the file only flushes its *contents*; the directory entry that
+    ``os.replace`` creates is separate metadata and can be lost on power loss even
+    though the data was synced. Fsyncing the parent closes that gap on POSIX. A
+    no-op where a directory handle can't be fsynced (e.g. Windows has no
+    ``O_DIRECTORY`` and raises on fsync of a dir fd).
+    """
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    try:
+        dfd = os.open(str(directory), os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(dfd)
+    except OSError:
+        pass
+    finally:
+        os.close(dfd)
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -71,9 +112,28 @@ def _atomic_write(path: Path, text: str) -> None:
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp, path)
+        # Fsync the directory so the rename itself is durable, not just the data.
+        _fsync_dir(path.parent)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+def _steal_stale_lock(lock: Path) -> None:
+    """Atomically reclaim a presumed-abandoned lock dir.
+
+    ``os.replace`` of a directory is atomic, so exactly one racer wins the rename
+    and removes it; the losers get an ``OSError`` and simply re-attempt the
+    ``mkdir``. This avoids the stat-then-``rmdir`` TOCTOU where two processes both
+    observe the lock as stale, both delete it, and both proceed — one possibly
+    deleting a *fresh* lock a third process just created.
+    """
+    sidelined = lock.with_name(f"{lock.name}.stale-{os.getpid()}")
+    try:
+        os.replace(lock, sidelined)
+    except OSError:
+        return  # another racer won the steal (or it vanished); just retry mkdir
+    shutil.rmtree(sidelined, ignore_errors=True)
 
 
 @contextlib.contextmanager
@@ -84,7 +144,7 @@ def _file_lock(target: Path, timeout: float = _LOCK_TIMEOUT):
     POSIX and Windows). Steals a lock older than ``_LOCK_STALE`` (a crashed
     holder). If the lock can't be acquired within ``timeout`` we proceed anyway
     rather than deadlock — the protected section is then no worse than the
-    historical unlocked behavior.
+    historical unlocked behavior (and is logged at WARNING for diagnosis).
     """
     lock = target.parent / (target.name + ".lock")
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -101,10 +161,11 @@ def _file_lock(target: Path, timeout: float = _LOCK_TIMEOUT):
             except OSError:
                 age = 0.0
             if age > _LOCK_STALE:
-                with contextlib.suppress(OSError):
-                    lock.rmdir()
+                _steal_stale_lock(lock)
                 continue
             if time.monotonic() >= deadline:
+                _log.warning("lock not acquired within %.1fs; proceeding "
+                             "unlocked on %s", timeout, target)
                 break  # give up; proceed unlocked
             time.sleep(_LOCK_POLL)
         except OSError:
@@ -113,6 +174,8 @@ def _file_lock(target: Path, timeout: float = _LOCK_TIMEOUT):
             # error instead of FileExistsError. Back off briefly and retry rather
             # than letting the read-modify-write crash.
             if time.monotonic() >= deadline:
+                _log.warning("lock unavailable (transient FS errors); proceeding "
+                             "unlocked on %s", target)
                 break
             time.sleep(_LOCK_POLL)
     try:
