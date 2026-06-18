@@ -103,6 +103,46 @@ def test_compute_stamp_source_sensitivity():
     assert with_src != without_src
 
 
+def test_compute_stamp_dev_tracks_requirements_dev(tmp_path, monkeypatch):
+    # Editable/dev mode (include_source=False) installs requirements-dev.txt, so a
+    # dev-only dep bump must change the stamp and trigger a rebuild.
+    fake = tmp_path / "requirements-dev.txt"
+    fake.write_text("-r requirements.txt\npytest>=8,<9\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "REQS_DEV", fake)
+    s1 = bootstrap.compute_stamp(include_source=False)
+    fake.write_text("-r requirements.txt\npytest>=9,<10\n", encoding="utf-8")
+    s2 = bootstrap.compute_stamp(include_source=False)
+    assert s1 != s2
+    # Non-editable installs never use requirements-dev.txt, so it must not feed the
+    # source-inclusive stamp.
+    src_a = bootstrap.compute_stamp(include_source=True)
+    fake.write_text("-r requirements.txt\npytest>=8,<9\n", encoding="utf-8")
+    assert bootstrap.compute_stamp(include_source=True) == src_a
+
+
+def test_do_install_removes_venv_on_failure(tmp_path, monkeypatch):
+    # A failed dep install must not leave a partial venv that create_venv would
+    # later "reuse"; do_install removes it so the next provision rebuilds clean.
+    import subprocess
+
+    venv_dir = tmp_path / "venv"
+
+    def fake_create(vd, uv):
+        py = bootstrap.venv_python(vd)
+        py.parent.mkdir(parents=True, exist_ok=True)
+        py.write_text("#!stub\n", encoding="utf-8")
+        return py
+
+    def fail_install(*a, **k):
+        raise subprocess.CalledProcessError(1, ["pip", "install"])
+
+    monkeypatch.setattr(bootstrap, "create_venv", fake_create)
+    monkeypatch.setattr(bootstrap, "install_deps", fail_install)
+    with pytest.raises(subprocess.CalledProcessError):
+        bootstrap.do_install(venv_dir, "stamp")
+    assert not venv_dir.exists()
+
+
 # --------------------------------------------------------------------------- #
 # is_ready
 # --------------------------------------------------------------------------- #

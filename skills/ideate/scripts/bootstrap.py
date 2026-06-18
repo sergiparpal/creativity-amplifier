@@ -129,7 +129,13 @@ def compute_stamp(*, include_source: bool) -> str:
     """Hash the inputs whose change should trigger a rebuild."""
     h = hashlib.sha256()
     h.update(SCHEMA.encode())
-    for path in (REQS, PYPROJECT):
+    stamp_files = [REQS, PYPROJECT]
+    # Editable/dev installs (not include_source) install requirements-dev.txt, so a
+    # dev-only dep bump (e.g. the pytest pin) must trigger a rebuild too; non-editable
+    # installs never use it, so it stays out of their stamp.
+    if not include_source and REQS_DEV.exists():
+        stamp_files.append(REQS_DEV)
+    for path in stamp_files:
         h.update(path.name.encode())
         h.update(b"\0")
         h.update(path.read_bytes() if path.exists() else b"")
@@ -289,7 +295,16 @@ def do_install(venv_dir: Path, stamp: str) -> Path:
         print("[bootstrap] uv not on PATH — using python -m venv + pip", flush=True)
 
     py = create_venv(venv_dir, uv)
-    install_deps(py, uv, editable=not installed_mode(venv_dir))
+    try:
+        install_deps(py, uv, editable=not installed_mode(venv_dir))
+    except BaseException:
+        # A failed/interrupted dep install leaves a venv with an interpreter but a
+        # partial dependency graph that create_venv would silently "reuse" next run
+        # (pip can't always self-heal a half-built tree). Remove it so the next
+        # provision rebuilds clean. The lock lives BESIDE the venv (_lock_dir), so
+        # this never deletes the lock this process still holds.
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        raise
 
     # Single source of truth for the skill, on every OS. Forward slashes work in
     # Git Bash, PowerShell, and cmd alike, so the recorded path is shell-agnostic.
