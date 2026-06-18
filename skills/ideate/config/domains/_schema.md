@@ -61,6 +61,10 @@ the natural scale of similarity.
 | `ask_sim_weight` | 0.5 | active-learning pair score: embedding-similarity weight (≤ 0 ⇒ compare region-separating pairs / explore) |
 | `ask_uncertainty_weight` | 0.3 | active-learning pair score: fitness-uncertainty weight |
 | `ask_novelty_weight` | 0.2 | active-learning pair score: novelty weight |
+| `explore_until_generation` | 0 | ask-policy schedule: first N generations ask region-separating (explore) pairs, then refine; `0` disables (flat `ask_sim_weight`) |
+| `erosion_window` | 5 | variety-erosion sensor (advisory): generations of survivor novelty used to estimate the decay slope |
+| `erosion_accel_ratio` | 0.5 | erosion fires when recent decay slope ≥ (1+ρ)× the earlier slope (i.e. ≥ 1.5×) |
+| `erosion_persist` | 2 | consecutive accelerating generations before flagging `variety_eroding` |
 
 ## Axis types
 

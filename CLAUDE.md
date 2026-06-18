@@ -145,7 +145,12 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   is a deliberate policy, not a proven optimum (the value-gate does not test it). The two competing
   readings (learn-preference vs. **explore** by comparing region-separating pairs) are reconciled by
   making the weights tunable: `engine.ask_sim_weight ≤ 0` flips the policy to explore. Defaults
-  reproduce the original behavior.
+  reproduce the original behavior. `engine.explore_until_generation` (S3) **schedules** that policy
+  by generation index: the first that-many 0-indexed generations ask region-separating (explore)
+  pairs (`-abs(ask_sim_weight)`), then switch to the configured `ask_sim_weight` (refine). It
+  defaults to `0` (off — flat `ask_sim_weight` every generation, no change to the global default)
+  and is opt-in; the explore magnitude tracks the refine magnitude by design (one knob). It only
+  changes *which* pairs are asked — never selection geometry, never who decides.
 - `session.py` — per-invocation context (`Session`): bundles the `State` handle, the resolved
   preference **domain** (memory namespace), the axes **spec**, and the **embedder**, all resolved
   lazily. It centralizes the rule that the memory namespace *is* the domain of the persisted axes
@@ -178,6 +183,18 @@ post-dedup survivors — dedup is the engine's own job) against `candidates_per_
 **soft** `monitor.under_generation` flag (with `submitted`/`target_candidates`) when it falls below
 `engine.under_generation_ratio` (default 0.6). The flag is advisory: it never touches `collapsing` or
 the calibration window; `SKILL.md`/`loop.md` tell the agent to generate more / prefilter less.
+
+**Variety-erosion sensor** (S2, `monitor.assess_variety_erosion`, also advisory): `variety_eroding`
+is a monitor flag raised when the per-generation **survivor mean novelty** decays *faster over time*
+(the decay **accelerates**) while the submitted count is healthy — the signature of a generator
+quietly regressing to the mode. By design it thresholds the **change in the decay rate**, never the
+novelty *level* and never the rate *absolutely*: a long-but-healthy session sits low and decays
+slowly (decelerating), so it can never false-positive. The flag fires only after the acceleration
+holds `engine.erosion_persist` (K, default 2) consecutive generations, over a window of
+`engine.erosion_window` (W, default 5) with margin `engine.erosion_accel_ratio` (ρ, default 0.5 ⇒
+recent ≥ 1.5× earlier). It is **strictly advisory** — it never sets or influences `collapsing`,
+never touches the monitor's calibration `cos_window`, and keeps its **own** persisted series
+(`novelty_window`) and streak counter (`erosion_streak`).
 
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
