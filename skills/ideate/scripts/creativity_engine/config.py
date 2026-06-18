@@ -210,6 +210,10 @@ class EngineConfig:
     monitor_cos_ceiling: float = 0.80
     monitor_window: int = 5
     monitor_min_baseline: int = 2
+    # variety-erosion sensor (S2); see monitor.assess_variety_erosion
+    erosion_window: int = 5          # W
+    erosion_accel_ratio: float = 0.5  # rho
+    erosion_persist: int = 2         # K
     # prefilter guard: flag a soft "under_generation" signal when the agent submits
     # fewer than this fraction of ``candidates_per_generation`` to ingest (the agent
     # may be over-prefiltering and cutting variety under cover of "off-brief").
@@ -261,6 +265,9 @@ class EngineConfig:
             "monitor_cos_ceiling": self.monitor_cos_ceiling,
             "monitor_window": self.monitor_window,
             "monitor_min_baseline": self.monitor_min_baseline,
+            "erosion_window": self.erosion_window,
+            "erosion_accel_ratio": self.erosion_accel_ratio,
+            "erosion_persist": self.erosion_persist,
             "under_generation_ratio": self.under_generation_ratio,
             "state_prune_threshold": self.state_prune_threshold,
             "ask_sim_weight": self.ask_sim_weight,
@@ -299,6 +306,16 @@ class EngineConfig:
                 raise ConfigError(f"engine.{key} must be an integer")
             if v < 0:
                 raise ConfigError(f"engine.{key} must be >= 0")
+            return v
+
+        def int_min(key: str, default: int, minimum: int) -> int:
+            v = eng.get(key, default)
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise ConfigError(f"engine.{key} must be an integer")
+            if v < minimum:
+                raise ConfigError(f"engine.{key} must be >= {minimum}")
             return v
 
         def unit_float(key: str, default: float, lo: float = 0.0,
@@ -345,6 +362,11 @@ class EngineConfig:
             monitor_min_baseline=pos_int(
                 "monitor_min_baseline", base.monitor_min_baseline
             ),
+            erosion_window=int_min("erosion_window", base.erosion_window, 3),
+            erosion_accel_ratio=unit_float(
+                "erosion_accel_ratio", base.erosion_accel_ratio, lo=0.0, hi=5.0
+            ),
+            erosion_persist=pos_int("erosion_persist", base.erosion_persist),
             under_generation_ratio=unit_float(
                 "under_generation_ratio", base.under_generation_ratio
             ),

@@ -19,7 +19,7 @@ machinery is never removed or bypassed — it is the whole point.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -36,6 +36,16 @@ DEFAULT_COS_CEILING = 0.80
 # How many prior generations must be in the baseline before the relative rule is
 # trusted; below this we use the absolute threshold.
 DEFAULT_MIN_BASELINE = 2
+
+# Variety-erosion sensor (S2). Advisory; never feeds `collapsing` or the
+# calibration window. We threshold the CHANGE in decay rate (acceleration), not
+# the novelty level or an absolute rate — healthy archive-fill decay decelerates,
+# so it can never trip an acceleration flag; a generator regressing to the mode
+# accelerates and does.
+DEFAULT_EROSION_WINDOW = 5        # W: generations of survivor-mean-novelty to keep
+DEFAULT_EROSION_ACCEL_RATIO = 0.5  # rho: recent slope >= (1+rho)*earlier slope
+DEFAULT_EROSION_PERSIST = 2        # K: consecutive accelerating generations to flag
+EROSION_MIN_SLOPE = 0.005          # rate-noise floor (NOT a novelty-level floor)
 
 
 def shannon_entropy(counts: Sequence[float]) -> float:
@@ -146,4 +156,58 @@ def evaluate(
         "coverage": occupied,
         "n": n,
         "reasons": reasons,
+    }
+
+
+def assess_variety_erosion(
+    prev_window: Sequence[float],
+    prev_streak: int,
+    value: Optional[float],
+    submitted_healthy: bool,
+    *,
+    window: int = DEFAULT_EROSION_WINDOW,
+    accel_ratio: float = DEFAULT_EROSION_ACCEL_RATIO,
+    persist: int = DEFAULT_EROSION_PERSIST,
+    min_slope: float = EROSION_MIN_SLOPE,
+) -> Dict[str, Any]:
+    """Advisory: is survivor-mean novelty decaying FASTER over time (the generator
+    regressing to the mode) rather than the natural decelerating decay of a filling
+    archive?
+
+    We never threshold the novelty LEVEL and never threshold the decay rate
+    ABSOLUTELY (a long healthy session sits low and decays slowly -> false positive).
+    We threshold the CHANGE in the rate: healthy decay decelerates (decrements shrink);
+    self-censoring accelerates (decrements grow). Flag when the recent decay slope
+    exceeds the earlier slope by >= ``accel_ratio`` (recent >= (1+ratio)*earlier),
+    sustained ``persist`` consecutive generations, and only while the agent's submitted
+    count is healthy (so this is not just under-generation). Pure and side-effect-free:
+    returns the rolled window, the streak, and the flag.
+    """
+    win = list(prev_window)
+    if value is not None:
+        win.append(float(value))
+    win = win[-window:]
+
+    accelerating = False
+    slope_earlier = slope_recent = None
+    if submitted_healthy and window >= 3 and len(win) >= window:
+        decs = [win[i] - win[i + 1] for i in range(len(win) - 1)]  # +ve = falling
+        half = len(decs) // 2
+        earlier, recent = decs[:half], decs[half:]
+        slope_earlier = sum(earlier) / len(earlier) if earlier else 0.0
+        slope_recent = sum(recent) / len(recent) if recent else 0.0
+        base = max(slope_earlier, min_slope)
+        accelerating = (
+            slope_recent > min_slope
+            and slope_recent >= (1.0 + accel_ratio) * base
+        )
+
+    streak = (prev_streak + 1) if accelerating else 0
+    return {
+        "novelty_window": win,
+        "erosion_streak": int(streak),
+        "variety_eroding": bool(streak >= persist),
+        "accelerating": bool(accelerating),
+        "slope_earlier": round(slope_earlier, 4) if slope_earlier is not None else None,
+        "slope_recent": round(slope_recent, 4) if slope_recent is not None else None,
     }

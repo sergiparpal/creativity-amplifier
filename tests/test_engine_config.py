@@ -31,6 +31,9 @@ def test_defaults_match_module_constants():
     assert c.monitor_cos_ceiling == monitor.DEFAULT_COS_CEILING
     assert c.monitor_window == 5
     assert c.monitor_min_baseline == monitor.DEFAULT_MIN_BASELINE
+    assert c.erosion_window == monitor.DEFAULT_EROSION_WINDOW
+    assert c.erosion_accel_ratio == monitor.DEFAULT_EROSION_ACCEL_RATIO
+    assert c.erosion_persist == monitor.DEFAULT_EROSION_PERSIST
     # dedup tau defaults to per-embedder (None), which for hash is the global default
     assert c.dedup_tau is None
     assert embed.default_dedup_tau("hash") == embed.DEFAULT_DEDUP_TAU
@@ -72,6 +75,11 @@ def test_load_defaults_and_overrides():
     assert config.load_engine_config(
         {"engine": {"explore_until_generation": 2}}
     ).explore_until_generation == 2
+    # variety-erosion sensor knobs: override all three
+    cfg_er = config.load_engine_config(
+        {"engine": {"erosion_window": 7, "erosion_accel_ratio": 1.0, "erosion_persist": 3}}
+    )
+    assert (cfg_er.erosion_window, cfg_er.erosion_accel_ratio, cfg_er.erosion_persist) == (7, 1.0, 3)
 
 
 def test_example_domain_engine_overrides():
@@ -95,6 +103,9 @@ def test_example_domain_engine_overrides():
         ({"engine": {"ask_sim_weight": 2}}, "ask_sim_weight"),
         ({"engine": {"ask_novelty_weight": -2}}, "ask_novelty_weight"),
         ({"engine": {"explore_until_generation": -1}}, "explore_until_generation"),
+        ({"engine": {"erosion_window": 2}}, "erosion_window"),
+        ({"engine": {"erosion_accel_ratio": 6}}, "erosion_accel_ratio"),
+        ({"engine": {"erosion_persist": 0}}, "erosion_persist"),
         ({"engine": []}, "engine"),
     ],
 )
