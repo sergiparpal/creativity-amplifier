@@ -226,6 +226,25 @@ class EngineConfig:
     ask_sim_weight: float = 0.5
     ask_uncertainty_weight: float = 0.3
     ask_novelty_weight: float = 0.2
+    # active-learning pair policy schedule (S3). Number of initial 0-indexed
+    # generations that use a region-separating (explore) weight before switching to
+    # the configured ask_sim_weight (refine). 0 DISABLES the schedule -> flat
+    # ask_sim_weight for every generation (current behavior, no silent flip).
+    # Recommended value to enable: 1 (explore on generation 0, refine from 1).
+    explore_until_generation: int = 0
+
+    def ask_sim_weight_for_generation(self, generation: int) -> float:
+        """Effective ask-pair similarity weight for a 0-indexed generation.
+
+        Default (explore_until_generation == 0): the configured flat
+        ``ask_sim_weight`` for every generation. When explore_until_generation > 0,
+        the first that-many generations use a region-separating (explore) weight,
+        ``-abs(ask_sim_weight)``; later generations use ``ask_sim_weight`` (refine).
+        One knob: the explore magnitude tracks the refine magnitude by design.
+        """
+        if self.explore_until_generation > 0 and generation < self.explore_until_generation:
+            return -abs(self.ask_sim_weight)
+        return self.ask_sim_weight
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -247,6 +266,7 @@ class EngineConfig:
             "ask_sim_weight": self.ask_sim_weight,
             "ask_uncertainty_weight": self.ask_uncertainty_weight,
             "ask_novelty_weight": self.ask_novelty_weight,
+            "explore_until_generation": self.explore_until_generation,
         }
 
     @classmethod
@@ -339,6 +359,9 @@ class EngineConfig:
             ),
             ask_novelty_weight=unit_float(
                 "ask_novelty_weight", base.ask_novelty_weight, lo=-1.0, hi=1.0
+            ),
+            explore_until_generation=non_neg_int(
+                "explore_until_generation", base.explore_until_generation
             ),
         )
 

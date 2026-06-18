@@ -67,6 +67,11 @@ def test_load_defaults_and_overrides():
     cfg_explore = config.load_engine_config({"engine": {"ask_sim_weight": -0.5}})
     assert cfg_explore.ask_sim_weight == -0.5
     assert cfg_explore.ask_novelty_weight == EngineConfig().ask_novelty_weight
+    # ask-policy schedule: default off (flat), opt-in via explore_until_generation
+    assert EngineConfig().explore_until_generation == 0
+    assert config.load_engine_config(
+        {"engine": {"explore_until_generation": 2}}
+    ).explore_until_generation == 2
 
 
 def test_example_domain_engine_overrides():
@@ -89,6 +94,7 @@ def test_example_domain_engine_overrides():
         ({"engine": {"state_prune_threshold": -1}}, "state_prune_threshold"),
         ({"engine": {"ask_sim_weight": 2}}, "ask_sim_weight"),
         ({"engine": {"ask_novelty_weight": -2}}, "ask_novelty_weight"),
+        ({"engine": {"explore_until_generation": -1}}, "explore_until_generation"),
         ({"engine": []}, "engine"),
     ],
 )
