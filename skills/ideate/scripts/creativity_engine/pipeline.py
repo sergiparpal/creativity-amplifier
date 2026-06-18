@@ -10,6 +10,7 @@ DPP diverse slate → anti-collapse monitor. The judge is never called here.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -370,13 +371,51 @@ def _maybe_prune_state(
     return len(drop)
 
 
-def _empty_cycle(arc: "archive_mod.Archive") -> Dict[str, Any]:
-    """Result dict for a generation with no candidates to ingest."""
+def _empty_cycle(
+    state: "State",
+    arc: "archive_mod.Archive",
+    spec: AxesSpec,
+    econfig: "config.EngineConfig",
+) -> Dict[str, Any]:
+    """Result dict for a generation with no candidates to ingest.
+
+    Mirrors the normal-cycle response schema (the advisory keys present with
+    neutral defaults) so a JSON consumer never KeyErrors on an empty generation.
+    Nothing is persisted — an empty generation is a no-op for archive/monitor/
+    sensor state, so the cycle and window counters are read but never advanced.
+    """
+    meta = state.read_meta()
+    gen_index = int(meta.get("cycles", 0))
+    mon = monitor.evaluate(
+        np.zeros((0, 1)), arc.niche_counts(),
+        baseline=list(meta.get("cos_window", [])),
+        cos_threshold=econfig.monitor_cos_threshold,
+        entropy_threshold=econfig.monitor_entropy_threshold,
+        margin=econfig.monitor_margin,
+        cos_ceiling=econfig.monitor_cos_ceiling,
+        min_baseline=econfig.monitor_min_baseline,
+    )
+    mon["submitted"] = 0
+    mon["target_candidates"] = int(meta.get("candidates_per_generation", 0) or 0)
+    mon["under_generation"] = False
+    mon["variety_eroding"] = False
+    in_explore = (
+        econfig.explore_until_generation > 0
+        and gen_index < econfig.explore_until_generation
+    )
     return {
         "slate": [],
         "ask_pairs": [],
-        "monitor": monitor.evaluate(np.zeros((0, 1)), arc.niche_counts()),
+        "ask_policy": {
+            "generation": gen_index,
+            "phase": "explore" if in_explore else "refine",
+            "ask_sim_weight_effective": econfig.ask_sim_weight_for_generation(gen_index),
+        },
+        "monitor": mon,
         "parents": [],
+        "open_axis": _open_axis_status(
+            state, spec, econfig.open_niches, econfig.open_niche_freeze_factor
+        ),
     }
 
 
@@ -547,16 +586,34 @@ def ingest(
     spec = config.load_axes(axes_source)
     econfig = config.load_engine_config(axes_source)
     sess = Session(project, home=home, seed=seed).ensure()
+    state = sess.state
     # The axes passed in are authoritative for this cycle; snapshot them only on
     # a fresh project so an existing project keeps its original resolved axes.
-    if sess.state.read_axes() is None:
+    fresh = state.read_axes() is None
+    if fresh:
         sess.adopt_spec(spec)
-    state = sess.state
+    else:
+        # Engine config stays per-cycle overridable (state_prune_threshold, monitor
+        # thresholds, ask weights …), but the open-axis NICHING knobs are pinned to
+        # the init snapshot: open_niches / open_niche_freeze_factor set the CVT
+        # partition's cell count and freeze point, so changing them mid-session
+        # (before the partition freezes) would refit k-means with a different k than
+        # the cells already placed in the archive. Pin just those from meta["engine"].
+        snap = state.read_meta().get("engine")
+        if isinstance(snap, dict):
+            econfig = replace(
+                econfig,
+                open_niches=int(snap.get("open_niches", econfig.open_niches)),
+                open_niche_freeze_factor=int(
+                    snap.get("open_niche_freeze_factor",
+                             econfig.open_niche_freeze_factor)
+                ),
+            )
 
     cand_list = _parse_candidates(candidates)
     arc = archive_mod.Archive.from_dict(spec, state.read_archive())
     if not cand_list:
-        return _empty_cycle(arc)
+        return _empty_cycle(state, arc, spec, econfig)
 
     stored_emb: Dict[str, List[float]] = state.read_embeddings()
     cand_store: Dict[str, Any] = state.read_candidates()
@@ -743,7 +800,7 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
     # Open-axis freeze progress from the persisted engine knobs (fall back to the
     # module defaults for older projects whose meta predates the engine block).
-    eng = sess.state.read_meta().get("engine", {})
+    eng = sess.state.read_meta().get("engine") or {}
     open_niches = int(eng.get("open_niches", OPEN_NICHES))
     freeze_factor = int(eng.get("open_niche_freeze_factor", OPEN_NICHE_FREEZE_FACTOR))
     return {
