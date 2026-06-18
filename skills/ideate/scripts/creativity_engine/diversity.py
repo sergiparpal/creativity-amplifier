@@ -173,12 +173,20 @@ def select_diverse(
     if quality is not None:
         quality = bounded_quality(quality, quality_weight)
     try:
-        kernel = build_kernel(vecs, quality=quality)
-        sel = greedy_map_dpp(kernel, k)
+        # Tie the early-stop threshold to the kernel jitter. Marginal gains floor at
+        # ~jitter for a rank-deficient pool, so an absolute epsilon below the jitter
+        # could never fire and the rank-deficiency top-up below would be dead code.
+        # 10x the jitter flags "no real diversity left" without tripping on genuinely
+        # diverse pools (whose gains are O(1)).
+        jitter = 1e-6
+        kernel = build_kernel(vecs, quality=quality, jitter=jitter)
+        sel = greedy_map_dpp(kernel, k, epsilon=10.0 * jitter)
         if len(sel) >= min(k, n):
             return sel
-        # top up with farthest-point if greedy stopped early (rank-deficient)
-        fallback = farthest_point_sampling(vecs, k)
+        # Greedy stopped early (rank-deficient pool): top up with farthest-point,
+        # seeded by the current selection so the fill EXTENDS that frontier rather
+        # than restarting independently (which could append items near existing picks).
+        fallback = farthest_point_sampling(vecs, k, seeds=sel)
         for idx in fallback:
             if idx not in sel:
                 sel.append(idx)
