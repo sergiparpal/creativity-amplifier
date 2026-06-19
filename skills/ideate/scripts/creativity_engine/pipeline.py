@@ -218,6 +218,13 @@ def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
         "niche_id": record.get("niche_id"),
         "coords": record.get("coords", {}),
         "novelty": round(float(record.get("novelty", 0.0)), 4),
+        # Advisory mechanism-space novelty (S4): variety of this idea's mechanism vs
+        # the session's own mechanisms. None for elites placed before this feature or
+        # specs with no open axis. Measurement only — never steers selection.
+        "mechanism_novelty": (
+            round(float(record["mechanism_novelty"]), 4)
+            if record.get("mechanism_novelty") is not None else None
+        ),
         "fitness": round(float(record.get("fitness", 1.0)), 4),
         # The agent looks an embedding up by candidate id, so the ref IS the id;
         # kept as a distinct field so the contract survives if that ever changes.
@@ -472,6 +479,7 @@ def _empty_cycle(
         },
         "monitor": mon,
         "parents": [],
+        "slate_mechanism_novelty": None,
         "open_axis": _open_axis_status(
             state, spec, econfig.open_niches, econfig.open_niche_freeze_factor
         ),
@@ -928,12 +936,18 @@ def _ingest_locked(
         erosion["novelty_window"], erosion["erosion_streak"], gap_record=gap_record,
         stored_mech_emb=stored_mech_emb,
     )
+    # Advisory slate-level mean mechanism novelty (S4); None when no item carries it.
+    _mvals = [s["mechanism_novelty"] for s in slate
+              if s.get("mechanism_novelty") is not None]
     result = {
         "slate": slate,
         "ask_pairs": ask_pairs,
         "ask_policy": ask_policy,
         "monitor": mon,
         "parents": slate_ids,
+        "slate_mechanism_novelty": (
+            round(sum(_mvals) / len(_mvals), 4) if _mvals else None
+        ),
         "open_axis": _open_axis_status(
             state, spec, econfig.open_niches, econfig.open_niche_freeze_factor
         ),
@@ -969,11 +983,28 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     dim = len(next(iter(stored_emb.values()))) if stored_emb else 1
     cos_vecs = _stack_embeddings(cos_ids, stored_emb, dim=dim)
     mon = monitor.evaluate(cos_vecs, arc.niche_counts())
+    # Advisory archive-level mechanism spread (S4): mean pairwise distance over the
+    # elites' mechanism (open-axis) embeddings. This is ARCHIVE-scoped and distinct
+    # from the slate-scoped `mechanism_spread` inside `surface_mechanism_gap` (gap.py).
+    # Measurement only — never feeds selection, the monitor, or any gate.
+    stored_mech_emb = sess.state.read_mech_embeddings()
+    mech_ids = [i for i in elite_ids if i in stored_mech_emb]
+    if len(mech_ids) >= 2:
+        mdim = len(stored_mech_emb[mech_ids[0]])
+        mvecs = np.asarray(
+            [stored_mech_emb[i] for i in mech_ids if len(stored_mech_emb[i]) == mdim],
+            dtype=np.float32,
+        )
+        mech_spread = round(float(diversity.mean_pairwise_distance(mvecs)), 4)
+    else:
+        mech_spread = None
     result = {
         "entropy": mon["entropy"],
         "mean_cosine": mon["mean_cosine"],
         "coverage": mon["coverage"],
         "n": len(elite_ids),
+        "mechanism_spread": mech_spread,
+        "mechanism_n": len(mech_ids),
         "open_axis": _open_axis_status(
             sess.state, sess.spec, open_niches, freeze_factor
         ),
