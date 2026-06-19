@@ -217,6 +217,22 @@ recent ≥ 1.5× earlier). It is **strictly advisory** — it never sets or infl
 never touches the monitor's calibration `cos_window`, and keeps its **own** persisted series
 (`novelty_window`) and streak counter (`erosion_streak`).
 
+**Surface/mechanism gap probe** (`gap.py`, `surface_mechanism_gap`, advisory measurement only):
+quantifies whether a slate's *wording* diversity (the surface idea-text embedding the engine
+already uses for novelty/DPP) **overstates** its *approach* diversity (the open/`mechanism`-axis
+embedding). It reports `surface_spread`, `mechanism_spread`, `gap = surface − mechanism`, and the
+pairwise-distance correlation `corr`. Like `novelty` (variety, not world-novelty) and
+`originality.py` (distance-to-cliché), it is **measured, never selected on**: never in
+`selftest`'s `ok`, never wired into the DPP `q`/kernel, parents, fitness, or the monitor.
+`engine.gap_probe` (default **off** ⇒ zero cost, output byte-for-byte unchanged) turns on per-cycle
+emission: `ingest` attaches `surface_mechanism_gap` to its result and appends a bounded record to
+`meta["gap_log"]` (last 50), which `metrics` then surfaces. **Before/after recipe:** set
+`engine.gap_probe: true` in the domain config, run the **same briefs** before and after a
+generation-side change, then compare the distributions of `gap`, `mechanism_spread`, and `corr`
+from each session's `gap_log` (`ENGINE metrics --project PROJECT`, or `meta.json`). Reading: a small
+`gap` with high `corr` and `mechanism_spread ≈ surface_spread` means surface diversity already
+tracks approach diversity; a persistent positive `gap` with low `corr` means it does not.
+
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
 the axis value (`CVTNicher`). The open-axis partition is **data-adaptive (fit-once-then-freeze)**:

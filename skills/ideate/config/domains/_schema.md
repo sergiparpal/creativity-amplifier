@@ -65,6 +65,7 @@ the natural scale of similarity.
 | `erosion_window` | 5 | variety-erosion sensor (advisory): generations of survivor novelty used to estimate the decay slope |
 | `erosion_accel_ratio` | 0.5 | erosion fires when recent decay slope ≥ (1+ρ)× the earlier slope (i.e. ≥ 1.5×) |
 | `erosion_persist` | 2 | consecutive accelerating generations before flagging `variety_eroding` |
+| `gap_probe` | `false` | advisory surface/mechanism gap measurement: when true, `ingest` emits a `surface_mechanism_gap` record on the slate and appends it to a bounded `meta["gap_log"]` (also surfaced by `metrics`). Never affects selection or any gate |
 
 ## Axis types
 
