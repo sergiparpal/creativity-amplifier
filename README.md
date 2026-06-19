@@ -109,10 +109,14 @@ step looks like and what you do.
    *different from one another* as possible — not just the "best" ones. Each idea comes
    with a short note on why it counts as distinct, so you can see the spread. **You
    read them over.**
-4. **You steer with a couple of quick comparisons.** Claude asks only the few most
-   useful **A-vs-B** questions — "which points in a better direction, A or B?" (you can
-   also say "neither"). You can **pin** any idea you like as a "stepping stone" to keep
-   exploring from. Reacting and pinning is the main thing you do.
+4. **You steer — pin your favorites, and answer a couple of quick comparisons.**
+   Claude asks only the few most useful **A-vs-B** questions — "which points in a
+   better direction, A or B?" (you can also say "neither"). But the main lever is
+   **pinning**: tell Claude to pin *any* idea you like as a "stepping stone" to keep
+   exploring from — **including ones it didn't ask you about**. If a slate idea you
+   love isn't one of the two being compared, just say "pin that one" — a pin is the
+   strong, lasting signal (the comparisons only fine-tune the ranking), so your
+   favorites are never lost just because they weren't in a question.
 5. **Claude runs another round, building on your picks.** Using what you preferred and
    pinned, Claude generates a fresh batch — pushing for ideas that are genuinely *new*,
    not variations on the same theme. If things start looking samey, a built-in monitor
@@ -202,11 +206,15 @@ above; this is the same loop with the internals. The skill follows
    judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs,
    plus the two **advisory** sensors (prefilter guard + variety erosion) that ask the
    skill to widen the search without ever influencing selection.
-5. **Select (you).** Claude shows the slate with each idea's niche coordinates and
-   asks only the most-informative A-vs-B pairs. You can **pin** stepping stones. *(The
-   pair policy is tunable: by default it favors **similar**, boundary-clarifying pairs
-   to learn your preference; an opt-in `explore_until_generation` schedule asks
-   **region-separating** pairs in the first few generations, then switches to refine.)*
+5. **Select (you).** Claude shows the slate with each idea's niche coordinates,
+   asks only the most-informative A-vs-B pairs, and **explicitly invites you to pin
+   any idea — not just the ones it asked about**. A pin is the strong, durable
+   preference signal (always kept as a parent for the next generation, recalled
+   across sessions); the A-vs-B answers only refine a bounded, low-weight `fitness`
+   that can never prune variety or pick the slate. *(The pair policy is tunable: by
+   default it favors **similar**, boundary-clarifying pairs to learn your preference;
+   an opt-in `explore_until_generation` schedule asks **region-separating** pairs in
+   the first few generations, then switches to refine.)*
 6. **Remember & loop.** Choices/pins go to local preference memory (namespaced per
    domain); diverse parents seed the next generation.
 
