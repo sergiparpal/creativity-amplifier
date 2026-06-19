@@ -148,6 +148,10 @@ Use `operators.md`. Produce `candidates_per_generation` ideas by applying
 ```
 
 Rules:
+- Generation is **mechanism-first**: pick a distinct `mechanism` (the open/primary
+  axis "how") for each idea, then realize each as a surface `text` — surface variety
+  follows mechanism variety, never the reverse. This composes with the
+  descriptor-discipline rule below (no two candidates share a `mechanism` string).
 - `descriptor` keys must be exactly the resolved axis names. Continuous axes get a
   number in range; the `open`/primary axis gets a short free-text "how".
 - Make each new idea differ from the ones already shown. If you have `parents`

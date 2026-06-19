@@ -80,6 +80,22 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    - **Caveat.** "Obvious" is still *your* (Claude's) notion of cliché, not the
      world's. This **hedges** cliché; it does **not** guarantee novelty against
      prior art or the wider world.
+   - **Generate mechanism-first (two layers).**
+     - *Layer 1 — mechanism first.* Before writing a candidate's `text`, decide its
+       **mechanism** (the open / `primary_novelty` axis value): the core "how it
+       works" in a few words. Choose it to sit **far from** (a) the obvious-set
+       mechanisms (`O_train`) and (b) the mechanisms already chosen for other
+       candidates this round and already in the archive.
+     - *Layer 2 — surface second.* Only then write the idea `text` that **expresses
+       that mechanism**. The surface is a realization of the mechanism, not the other
+       way round.
+     - **Same mechanism = same idea.** Two ideas with the same mechanism are the same
+       idea — vary the mechanism, then the surface follows. This is what the engine
+       niches on (the open axis), so mechanism variety is what produces a genuinely
+       diverse slate.
+     - **Caveat.** "Mechanism" here is *your* notion of approach; distinct mechanism
+       strings hedge mechanism-monotony, they do not guarantee functionally
+       independent mechanisms.
    - **Descriptor discipline (protect niche placement).** Niche placement — incl.
      the open axis — runs on *your* descriptor words **before** the engine sees
      anything, so lazy or duplicate descriptors collapse niches up front. Give no
