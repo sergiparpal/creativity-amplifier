@@ -216,6 +216,10 @@ class State:
         return self.root / "embeddings.json"
 
     @property
+    def mech_embeddings_path(self) -> Path:
+        return self.root / "mech_embeddings.json"
+
+    @property
     def open_nicher_path(self) -> Path:
         return self.root / "open_nicher.json"
 
@@ -348,6 +352,12 @@ class State:
 
     def write_embeddings(self, embeddings: Dict[str, List[float]]) -> None:
         self.write_json(self.embeddings_path, embeddings)
+
+    def read_mech_embeddings(self) -> Dict[str, List[float]]:
+        return self.read_json(self.mech_embeddings_path, {}) or {}
+
+    def write_mech_embeddings(self, embeddings: Dict[str, List[float]]) -> None:
+        self.write_json(self.mech_embeddings_path, embeddings)
 
     def read_open_nicher(self) -> Optional[Dict[str, Any]]:
         """Persisted open-axis nicher: cold-start accumulation or frozen centroids."""
