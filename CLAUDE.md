@@ -297,3 +297,6 @@ measure stays non-circular — and reports it as a printed-only sanity number th
 - `config.ConfigError` messages are user-facing (printed by the CLI) — write them for the operator.
 - `docs/PAPER.md` is the reference-architecture paper (rationale and positioning), not the
   implementation spec — `SKILL.md` + this file are the spec.
+- **Git workflow:** commit work directly on `main` — do **not** create a new branch unless
+  the user explicitly asks for one. (Overrides the default "branch before committing on the
+  default branch" behavior.)
