@@ -116,7 +116,10 @@ step looks like and what you do.
    exploring from — **including ones it didn't ask you about**. If a slate idea you
    love isn't one of the two being compared, just say "pin that one" — a pin is the
    strong, lasting signal (the comparisons only fine-tune the ranking), so your
-   favorites are never lost just because they weren't in a question.
+   favorites are never lost just because they weren't in a question. The opposite lever
+   is there too: say "drop that one" to **discard** ideas you don't want — they
+   disappear from later slates and are never built on again (re-pin to undo). Pins and
+   discards both persist for next time.
 5. **Claude runs another round, building on your picks.** Using what you preferred and
    pinned, Claude generates a fresh batch — pushing for ideas that are genuinely *new*,
    not variations on the same theme. If things start looking samey, a built-in monitor
@@ -211,12 +214,16 @@ above; this is the same loop with the internals. The skill follows
    any idea — not just the ones it asked about**. A pin is the strong, durable
    preference signal (always kept as a parent for the next generation, recalled
    across sessions); the A-vs-B answers only refine a bounded, low-weight `fitness`
-   that can never prune variety or pick the slate. *(The pair policy is tunable: by
+   that can never prune variety or pick the slate. It also invites you to **discard**
+   ideas — the negative of a pin: a human veto that drops the idea from future slates
+   and parents and persists across sessions (mutually exclusive with a pin of the same
+   id, latest action wins). Discarding is filter-only — it never feeds novelty, DPP, or
+   the monitor. *(The pair policy is tunable: by
    default it favors **similar**, boundary-clarifying pairs to learn your preference;
    an opt-in `explore_until_generation` schedule asks **region-separating** pairs in
    the first few generations, then switches to refine.)*
-6. **Remember & loop.** Choices/pins go to local preference memory (namespaced per
-   domain); diverse parents seed the next generation.
+6. **Remember & loop.** Choices/pins/discards go to local preference memory (namespaced
+   per domain); diverse parents seed the next generation (pins kept, discards excluded).
 
 ## Adding a domain template
 
@@ -257,8 +264,8 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 | `paths` | ensure the project state dir (incl. its `tmp/` scratch dir) + return resolved paths |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor |
-| `remember` | append a comparison/pin to preference memory |
-| `parents` | diverse parents for the next generation (pins always kept) |
+| `remember` | append a comparison/pin/discard to preference memory |
+| `parents` | diverse parents for the next generation (pins always kept, discards excluded) |
 | `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
 | `selftest` | full loop with a stubbed LLM + human; variety gate + collapse reversal |
 

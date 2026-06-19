@@ -235,6 +235,9 @@ class State:
     def pins_path(self, domain: str) -> Path:
         return self.memory_dir(domain) / "pins.json"
 
+    def discards_path(self, domain: str) -> Path:
+        return self.memory_dir(domain) / "discards.json"
+
     # -- lifecycle ---------------------------------------------------------- #
     def exists(self) -> bool:
         return self.meta_path.exists()
@@ -378,4 +381,37 @@ class State:
             if candidate_id not in pins:
                 pins.append(candidate_id)
                 self.write_pins(domain, pins)
+            # Pins and discards are mutually exclusive (latest action wins): pinning
+            # an id the user previously discarded un-discards it.
+            self._remove_discard(domain, candidate_id)
             return pins
+
+    def read_discards(self, domain: str) -> List[str]:
+        return self.read_json(self.discards_path(domain), []) or []
+
+    def write_discards(self, domain: str, discards: List[str]) -> None:
+        self.write_json(self.discards_path(domain), discards)
+
+    def add_discard(self, domain: str, candidate_id: str) -> List[str]:
+        # Locked read-modify-write, mirroring add_pin. A discard is the negative of
+        # a pin; the two are mutually exclusive (latest action wins), so discarding
+        # an id also drops it from pins.
+        path = self.discards_path(domain)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _file_lock(path):
+            discards = self.read_discards(domain)
+            if candidate_id not in discards:
+                discards.append(candidate_id)
+                self.write_discards(domain, discards)
+            self._remove_pin(domain, candidate_id)
+            return discards
+
+    def _remove_pin(self, domain: str, candidate_id: str) -> None:
+        pins = self.read_pins(domain)
+        if candidate_id in pins:
+            self.write_pins(domain, [p for p in pins if p != candidate_id])
+
+    def _remove_discard(self, domain: str, candidate_id: str) -> None:
+        discards = self.read_discards(domain)
+        if candidate_id in discards:
+            self.write_discards(domain, [d for d in discards if d != candidate_id])

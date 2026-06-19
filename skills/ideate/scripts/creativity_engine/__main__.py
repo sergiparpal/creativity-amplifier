@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--axes", required=True, help="path to axes .json/.yaml")
     sp.add_argument("--seed", type=int, default=0)
 
-    sp = sub.add_parser("remember", help="append a comparison/pin to memory")
+    sp = sub.add_parser("remember", help="append a comparison/pin/discard to memory")
     sp.add_argument("--project", required=True)
     sp.add_argument("--event", required=True, help="path to event .json")
 

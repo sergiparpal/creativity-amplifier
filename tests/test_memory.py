@@ -40,6 +40,29 @@ def test_pin_round_trip_and_idempotent(home):
     assert memory.recall(st, "marketing")["pins"] == ["c1", "c2"]
 
 
+def test_discard_round_trip_and_idempotent(home):
+    st = State("p").ensure()
+    memory.remember(st, "marketing", {"type": "discard", "id": "c1"})
+    memory.remember(st, "marketing", {"type": "discard", "id": "c1"})  # idempotent
+    memory.remember(st, "marketing", {"type": "discard", "id": "c2"})
+    rec = memory.recall(st, "marketing")
+    assert rec["discards"] == ["c1", "c2"]
+    assert rec["pins"] == []  # discards never bleed into pins
+
+
+def test_pin_and_discard_are_mutually_exclusive_latest_wins(home):
+    st = State("p").ensure()
+    # pin then discard the same id -> in discards, gone from pins
+    memory.remember(st, "m", {"type": "pin", "id": "x"})
+    memory.remember(st, "m", {"type": "discard", "id": "x"})
+    rec = memory.recall(st, "m")
+    assert rec["pins"] == [] and rec["discards"] == ["x"]
+    # re-pin the same id -> back to pins, gone from discards (un-discarded)
+    memory.remember(st, "m", {"type": "pin", "id": "x"})
+    rec = memory.recall(st, "m")
+    assert rec["pins"] == ["x"] and rec["discards"] == []
+
+
 def test_preferred_values_from_winners(home):
     st = State("p").ensure()
     st.write_candidates(
@@ -59,6 +82,7 @@ def test_preferred_values_from_winners(home):
         {"winner": "a", "loser": "b"},  # missing type
         {"type": "comparison", "winner": "a"},  # missing loser
         {"type": "pin"},  # missing id
+        {"type": "discard"},  # missing id
         {"type": "bogus"},  # unknown type
     ],
 )
@@ -184,6 +208,14 @@ def test_parents_empty_pool_returns_pins():
     assert out == ["e0"]
 
 
+def test_parents_excludes_discarded_elites():
+    ids, emb = _elite_pool()
+    out = memory.select_parents(ids, emb, pins=[], k=5, discards=["e1", "e3"])
+    assert "e1" not in out and "e3" not in out
+    # the surviving elites can still fill the parent set
+    assert set(out) <= {"e0", "e2", "e4"}
+
+
 # --------------------------------------------------------------------------- #
 # pipeline remember via CLI
 # --------------------------------------------------------------------------- #
@@ -208,3 +240,25 @@ def test_cli_remember_round_trip(tmp_path, capsys, home):
     rec = json.loads(capsys.readouterr().out)
     assert rec["pins"] == ["c1"]
     assert rec["domain"] == "mk"
+
+
+def test_cli_discard_round_trip(tmp_path, capsys, home):
+    axes = tmp_path / "axes.json"
+    axes.write_text(
+        json.dumps(
+            {"domain": "mk", "axes": [{"name": "a", "type": "categorical"}]}
+        ),
+        encoding="utf-8",
+    )
+    assert main(["init-project", "--project", "p", "--axes", str(axes)]) == 0
+    capsys.readouterr()
+
+    event = tmp_path / "ev.json"
+    event.write_text(json.dumps({"type": "discard", "id": "c9"}), encoding="utf-8")
+    assert main(["remember", "--project", "p", "--event", str(event)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True and out["type"] == "discard" and out["id"] == "c9"
+
+    assert main(["recall", "--project", "p"]) == 0
+    rec = json.loads(capsys.readouterr().out)
+    assert rec["discards"] == ["c9"]

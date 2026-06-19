@@ -34,7 +34,13 @@ and any change must preserve it:
   it can nudge ordering but can **never** prune variety, collapse the slate's diversity, or pick the
   final slate. (Set the weight to 0 for pure diversity.)
 - **The user is the real selector.** The engine proposes a diverse slate + the most-informative
-  A-vs-B pairs; the human chooses and pins "stepping stones".
+  A-vs-B pairs; the human chooses and pins "stepping stones". The human may also **discard**
+  ideas — the negative of a pin. A discard is a **human veto**, applied only as a filter on the
+  *presented* slate pool and the *parent* pool (so a discarded idea stops re-appearing and is
+  never bred from); it is **never** wired into novelty, the DPP `q`/kernel, niching, fitness, or
+  the monitor. Because it is the user pruning (not a quality/cliché heuristic), it preserves the
+  invariant while honoring "the user is the real selector". Pins and discards are **mutually
+  exclusive, latest action wins** (`add_pin`/`add_discard` keep one set free of the other).
 - The embedder is deliberately a **different model family** from Claude (default
   `minishlab/potion-multilingual-128M`; opt-in high-fidelity `BAAI/bge-small-en-v1.5`) so
   "what's novel" isn't judged by the lineage that generated the ideas.
@@ -131,7 +137,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 | `paths` | ensure the project state dir (incl. its `tmp/` scratch dir) + return resolved paths |
 | `recall` | return preference memory for in-context injection |
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor (one cycle) |
-| `remember` | append a comparison/pin to preference memory |
+| `remember` | append a comparison/pin/discard to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
 | `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
 | `selftest` | full loop with stubbed LLM + human; value gate + collapse reversal + advisory originality probe |
@@ -255,8 +261,9 @@ are atomic (temp file + `os.replace`). Per-project files are `meta.json` (projec
 settings), `axes.json` (the resolved axes geometry — kept separate from settings so the engine's
 `AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, and `open_nicher.json`
 (the frozen CVT centroids, written once the open-axis partition freezes — see Niching). Preference memory
-(`comparisons.jsonl`, `pins.json`) lives in a per-domain sub-directory, **namespaced per domain**
-so switching domains keeps preferences separate. A per-project `tmp/` scratch dir (created by
+(`comparisons.jsonl`, `pins.json`, `discards.json`) lives in a per-domain sub-directory,
+**namespaced per domain** so switching domains keeps preferences separate. `discards.json` is the
+user's veto list (excluded from slates + parents, mutually exclusive with `pins.json`). A per-project `tmp/` scratch dir (created by
 `State.ensure`, surfaced by the `paths` command) holds the skill's hand-off files (`axes.json`,
 `candidates.json`, `event.json`) inside the state home so they never clutter the user's cwd or
 collide across concurrent sessions. `candidates.json`/`embeddings.json` are rewritten whole each

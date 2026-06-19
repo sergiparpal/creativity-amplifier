@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -506,12 +506,21 @@ def _select_slate(
     seed: int,
     max_dpp_pool: int = MAX_DPP_POOL,
     quality_weight: float = QUALITY_WEIGHT,
+    discards: Optional[Set[str]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """DPP diverse slate over the current niche elites. Returns ``(slate, ids)``."""
+    """DPP diverse slate over the current niche elites. Returns ``(slate, ids)``.
+
+    ``discards`` are the user's vetoed ids: an elite the user discarded is skipped so
+    it stops re-appearing on the slate. This is a human veto applied to the presented
+    pool only — the archive, niching, novelty, and the monitor are untouched — so when
+    ``discards`` is empty the slate is identical to before.
+    """
+    discarded = discards or set()
     elites: List[Tuple[str, float, str]] = [
         (niche.elite_id, niche.fitness, nid)
         for nid, niche in arc.niches.items()
         if niche.elite_id and niche.elite_id in stored_emb
+        and niche.elite_id not in discarded
     ]
     # cap the pool by novelty for latency
     if len(elites) > max_dpp_pool:
@@ -662,9 +671,13 @@ def ingest(
         freeze_factor=econfig.open_niche_freeze_factor,
     )
 
+    # User vetoes (discards) are namespaced by the session domain, like pins. Drop
+    # them from the presented slate so a discarded idea stops re-appearing.
+    discards = set(sess.state.read_discards(sess.domain))
     slate, slate_ids = _select_slate(
         arc, stored_emb, cand_store, spec, seed,
         max_dpp_pool=econfig.max_dpp_pool, quality_weight=econfig.quality_weight,
+        discards=discards,
     )
 
     # Read meta once: nothing rewrites it until _persist_cycle at the end, so the
@@ -761,6 +774,9 @@ def ingest(
     # State hygiene (long sessions): drop candidate records/embeddings nothing reads
     # again. Keep set = archive elites + pins + comparison ids — exactly what
     # dedup/novelty/slate, parents, and recall consume — so output is unchanged.
+    # Discards need no entry: their id list lives in discards.json (never pruned), a
+    # discarded id that is still an elite is already kept via elite_ids(), and a
+    # non-elite discarded id needs only its string, not its candidate record.
     keep_ids = set(arc.elite_ids())
     keep_ids.update(state.read_pins(domain))
     for ev in comparisons:
@@ -838,8 +854,11 @@ def parents(project: str, k: int = 4, seed: int = 0,
     # Session.domain is the shared snapshot-resolved namespace, so pins are read
     # from the namespace recall/ingest/remember wrote them to.
     pins = sess.state.read_pins(sess.domain)
-    elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
-    chosen = memory.select_parents(elite_ids, stored_emb, pins, k)
+    discards = sess.state.read_discards(sess.domain)
+    elite_ids = [
+        i for i in arc.elite_ids() if i in stored_emb and i not in set(discards)
+    ]
+    chosen = memory.select_parents(elite_ids, stored_emb, pins, k, discards=discards)
     records = []
     for cid in chosen:
         rec = cand_store.get(cid, {})

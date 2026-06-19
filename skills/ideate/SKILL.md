@@ -102,14 +102,23 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    kept as parents for the next generation and recalled across sessions, whereas the
    A-vs-B pairs only refine a **low-weight** `fitness` signal that can never prune
    variety. So if the user's favorite is an idea you didn't ask about, prompt them to
-   pin it rather than let it pass unrecorded. Note on the `novelty`
+   pin it rather than let it pass unrecorded. Then also **offer the negative lever —
+   the user may discard any ideas they don't want carried forward** (e.g. "Want me to
+   drop any of these so we stop building on them?"). A discard is the symmetric
+   opposite of a pin: the engine removes that idea from future slates and never breeds
+   from it, and it persists across sessions (re-pinning an id un-discards it — pin and
+   discard of the same id are mutually exclusive, latest action wins). Discarding is
+   the user's call, never yours — never discard to enforce a taste or cut variety.
+   Note on the `novelty`
    field: it is **mean k-NN distance to this session's own ideas (elites + this
    batch)** — a *variety* proxy, NOT originality vs. prior art / the world. Read a
    high `novelty` as "unlike the other ideas in this run", and don't present it to
    the user as proof an idea is novel to the world.
-8. **Record & continue.** For each answer/pin run `ENGINE remember`; then
-   `ENGINE parents` to get diverse parents and loop from step 4, or stop on the
-   user's command.
+8. **Record & continue.** For each answer/pin/discard run `ENGINE remember`
+   (`{"type":"pin","id":…}`, `{"type":"discard","id":…}`, or
+   `{"type":"comparison","winner":…,"loser":…}`); then `ENGINE parents` to get diverse
+   parents (pins always kept, discards always excluded) and loop from step 4, or stop
+   on the user's command.
 9. **React to the monitor.** If `monitor.collapsing` is true, raise diversity
    directives next round (new operators, forbid the crowded niches, demand
    distance from recent ideas) — never remove or bypass the monitor. If

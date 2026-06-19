@@ -63,16 +63,27 @@ def remember(state: State, domain: str, event: Dict[str, Any]) -> Dict[str, Any]
             raise ValueError("pin event needs an 'id'")
         pins = state.add_pin(domain, cid)
         return {"ok": True, "type": "pin", "id": cid, "pins": pins}
-    raise ValueError(f"unknown event type {etype!r} (expected comparison|pin)")
+    if etype == "discard":
+        cid = event.get("id")
+        if not cid:
+            raise ValueError("discard event needs an 'id'")
+        # A discard is the user's negative lever — the symmetric opposite of a pin.
+        # It removes the idea from future slates and parents (and un-pins it).
+        discards = state.add_discard(domain, cid)
+        return {"ok": True, "type": "discard", "id": cid, "discards": discards}
+    raise ValueError(
+        f"unknown event type {etype!r} (expected comparison|pin|discard)"
+    )
 
 
 # --------------------------------------------------------------------------- #
 # recall
 # --------------------------------------------------------------------------- #
 def recall(state: State, domain: str, k: int = 10) -> Dict[str, Any]:
-    """Summarize memory for injection: recent comparisons, pins, win tallies."""
+    """Summarize memory for injection: recent comparisons, pins, discards, tallies."""
     comparisons = state.read_comparisons(domain)
     pins = state.read_pins(domain)
+    discards = state.read_discards(domain)
 
     wins: Counter = Counter()
     losses: Counter = Counter()
@@ -101,6 +112,7 @@ def recall(state: State, domain: str, k: int = 10) -> Dict[str, Any]:
         "domain": domain,
         "preferences": comparisons[-k:],
         "pins": pins,
+        "discards": discards,
         "summary": {
             "n_comparisons": len(comparisons),
             "win_counts": dict(wins.most_common(k)),
@@ -193,14 +205,22 @@ def select_parents(
     emb_by_id: Dict[str, Sequence[float]],
     pins: List[str],
     k: int,
+    discards: Optional[Sequence[str]] = None,
 ) -> List[str]:
     """Diverse parent ids for the next generation; pins are ALWAYS included.
 
     Starts from the pinned stepping stones and greedily adds the elites farthest
     (in cosine distance) from everything chosen so far, until ``k`` is reached.
     Pins are never dropped, even if there are more pins than ``k``.
+
+    ``discards`` are the user's vetoed ids — dropped from the elite pool so they are
+    never bred from. They cannot collide with pins: ``add_pin``/``add_discard`` keep
+    the two sets mutually exclusive (latest action wins), so a discard never strips a
+    pin here.
     """
     from .diversity import farthest_point_sampling
+
+    discarded = set(discards or ())
 
     # pins first, de-duplicated, order preserved — never dropped
     selected: List[str] = []
@@ -208,7 +228,10 @@ def select_parents(
         if p not in selected:
             selected.append(p)
 
-    pool = [e for e in elite_ids if e not in selected and e in emb_by_id]
+    pool = [
+        e for e in elite_ids
+        if e not in selected and e in emb_by_id and e not in discarded
+    ]
     remaining = max(0, k - len(selected))
     if not pool or remaining == 0:
         return selected

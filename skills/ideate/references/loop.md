@@ -123,11 +123,12 @@ Then:
 
 ```
 ENGINE init-project --project PROJECT --axes $TMP/axes.json --seed 7
-ENGINE recall --project PROJECT          # returns {domain, preferences, pins}
+ENGINE recall --project PROJECT          # returns {domain, preferences, pins, discards}
 ```
 
 Inject the `recall` output into your context — it carries the user's prior
-A-vs-B choices and pinned stepping stones for this domain.
+A-vs-B choices, pinned stepping stones, and discarded ideas for this domain (don't
+re-surface a discarded id; the engine already excludes them from slates and parents).
 
 ---
 
@@ -231,6 +232,19 @@ the user likes a slate idea you didn't ask about, prompt them to pin it instead 
 letting it pass unrecorded. Pins **and** any free-form comparison the user volunteers
 (beyond the two suggested pairs) are both recorded in step 6.
 
+Then offer the **negative lever**: the user may **discard** any idea(s) they don't
+want carried forward, e.g.:
+
+> Want me to drop any of these so we stop building on them? (any of them)
+
+A **discard** is the symmetric opposite of a pin. The engine drops a discarded idea
+from **future slates** (it stops re-appearing) and never breeds from it as a parent,
+and the discard **persists across sessions** like a pin. Pin and discard of the same
+id are **mutually exclusive, latest action wins** — re-pinning a discarded idea
+un-discards it, and discarding a pinned idea un-pins it. Discarding is the user's
+call; never discard on your own to enforce a taste or trim variety — that authority
+belongs to the geometry + the human, never the judge.
+
 ---
 
 ## 6. Remember + parents + loop
@@ -245,9 +259,15 @@ ENGINE remember --project PROJECT --event $TMP/event.json
 # a pin
 echo '{"type":"pin","id":"idA"}' > $TMP/event.json
 ENGINE remember --project PROJECT --event $TMP/event.json
+
+# a discard (negative of a pin: dropped from future slates + parents, persists;
+# mutually exclusive with a pin of the same id — latest action wins)
+echo '{"type":"discard","id":"idB"}' > $TMP/event.json
+ENGINE remember --project PROJECT --event $TMP/event.json
 ```
 
-Then fetch diverse parents for the next generation (pins are always honored):
+Then fetch diverse parents for the next generation (pins are always honored, discards
+are always excluded):
 
 ```
 ENGINE parents --project PROJECT --k 4 --seed 7
