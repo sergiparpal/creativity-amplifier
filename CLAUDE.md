@@ -231,7 +231,10 @@ emission: `ingest` attaches `surface_mechanism_gap` to its result and appends a 
 generation-side change, then compare the distributions of `gap`, `mechanism_spread`, and `corr`
 from each session's `gap_log` (`ENGINE metrics --project PROJECT`, or `meta.json`). Reading: a small
 `gap` with high `corr` and `mechanism_spread ≈ surface_spread` means surface diversity already
-tracks approach diversity; a persistent positive `gap` with low `corr` means it does not.
+tracks approach diversity; a persistent positive `gap` with low `corr` means it does not. When
+enabled, the skill also gives the user a plain-language, session-end summary of the gap
+(`SKILL.md` step 10 / `loop.md` §8) — still advisory: it reports the measurement and never
+steers selection.
 
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of

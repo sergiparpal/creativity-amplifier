@@ -124,6 +124,16 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    distance from recent ideas) — never remove or bypass the monitor. If
    `monitor.under_generation` is true, you over-prefiltered: next round generate the
    full target and cut **only** invalid/off-brief ideas, never the merely unusual.
+10. **Session-end gap summary (advisory; only when `gap_probe` is enabled).** If — and only
+    if — this session's `ingest` output has carried a `surface_mechanism_gap` block (it
+    appears only when `engine.gap_probe: true` is set in the resolved axes; by default it is
+    absent and this step is skipped entirely), then when the session ends give a short
+    **plain-language** read of whether the slates were varied in *approach* or only in
+    *wording*. Fetch the durable series with `ENGINE metrics` (its `gap_log` field) and
+    summarize across the session's cycles — **never per cycle** (one ~6-idea slate is too
+    small to read). This is **measurement only, exactly like `novelty` / originality**: it
+    never changed the slates and must never steer selection; you only report it. Full guide
+    in `references/loop.md` → §8.
 
 Read `${CLAUDE_SKILL_DIR}/references/loop.md` for exact JSON shapes, engine
 contracts, and steering tactics. Never hard-code a domain — always use the axes

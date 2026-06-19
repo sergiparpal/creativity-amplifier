@@ -185,9 +185,14 @@ Returns:
               "submitted": 12, "target_candidates": 12, "under_generation": false},
   "parents": ["id", "..."],
   "open_axis": {"present": true, "frozen": false, "partition": "cold_start",
-                "accumulated": 12, "freeze_threshold": 48, "progress": 0.25}
+                "accumulated": 12, "freeze_threshold": 48, "progress": 0.25},
+  "surface_mechanism_gap": {"n": 6, "surface_spread": 0.62, "mechanism_spread": 0.41,
+                            "gap": 0.21, "corr": 0.34}
 }
 ```
+
+`surface_mechanism_gap` is **present only when `engine.gap_probe: true`** is set in the
+resolved axes (default off ⇒ absent). It is advisory measurement — see §8.
 
 `submitted` / `target_candidates` / `under_generation` are the **prefilter guard**:
 the engine sees only the candidates you submitted, so if you prefiltered away so many
@@ -299,6 +304,53 @@ job in the prefilter is to drop the *invalid / off-brief / incoherent*. Next rou
 
 Never remove, bypass, or "trust the judge instead of" the monitor. The
 anti-convergence machinery is the point of the tool.
+
+---
+
+## 8. Session-end gap summary (advisory, only when enabled)
+
+This section applies **only when `engine.gap_probe: true`** is set in the resolved axes.
+With it off (the default), `ingest` never returns a `surface_mechanism_gap` block — skip
+this section entirely; the loop's behavior and output are unchanged.
+
+When it is on, each `ingest` return carries that advisory block:
+- `surface_spread` — how spread the slate is in **wording** (the idea-text the engine
+  already uses for novelty/DPP).
+- `mechanism_spread` — how spread it is in **approach** (the open / `mechanism` axis text).
+- `gap = surface_spread − mechanism_spread` — positive ⇒ the slate reads more varied than
+  its underlying approaches are.
+- `corr` — do wording-distant pairs also tend to be approach-distant? High ⇒ yes (little
+  gap); low ⇒ ideas can read very differently yet lean on the same approach.
+
+**Never report these per cycle** — one ~6-idea slate gives only ~15 pairwise distances, so a
+single cycle is too noisy to read. Instead, at **session end** (the user stops, or asks to
+wrap up), read the durable per-cycle series with `ENGINE metrics --project PROJECT` (its
+`gap_log` field, present once the probe has run) and summarize the **trend** across the
+session, in **plain language, no embedding jargon**. Translate, e.g.:
+- small gap + high `corr` ⇒ "Your ideas varied in *how they work*, not just how they're
+  worded — the variety looks real all the way down."
+- persistent positive gap + low `corr` ⇒ "Heads-up: these read quite differently, but
+  several lean on the same underlying approach (e.g. *<name the repeated mechanism>*) — the
+  variety is more in the wording than in the mechanism."
+
+Keep these honesty caveats in the summary:
+- It compares your **idea text** against your **mechanism descriptor** (both embedded by the
+  engine's model), so it reflects how distinctly *you* described each mechanism, not a
+  ground-truth taxonomy of approaches — a measured proxy, like `novelty` (variety, not
+  world-novelty) and the obvious-set (your notion of cliché).
+- It is **advisory only**: it never picked or reordered any slate and never fed the engine's
+  selection. You are reporting a measurement, not a verdict.
+
+**Optional nudge (only if the user wants it).** When the gap is persistently high you MAY
+offer to push *approach* variety next round via the "Zoom on mechanism" steering tactic
+(generate several genuinely distinct mechanisms). That is a **generation**-side choice you
+already own — the same kind of reaction as to `monitor.collapsing` — not a change to
+selection. Never wire the gap into the engine's selection, parents, or fitness, and never
+act on it unless the user asks.
+
+The series is persisted to `meta["gap_log"]` (last 50 records) and surfaced by `ENGINE
+metrics` (so the summary doesn't depend on what's still in context); see CLAUDE.md for
+offline before/after analysis.
 
 ---
 
