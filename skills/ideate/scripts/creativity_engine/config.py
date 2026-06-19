@@ -236,6 +236,10 @@ class EngineConfig:
     # ask_sim_weight for every generation (current behavior, no silent flip).
     # Recommended value to enable: 1 (explore on generation 0, refine from 1).
     explore_until_generation: int = 0
+    # advisory surface/mechanism gap probe (measurement only). When True, ingest emits a
+    # `surface_mechanism_gap` record on the slate and appends it to a bounded meta log. Off
+    # by default: zero cost, output unchanged. Never affects selection or any gate.
+    gap_probe: bool = False
 
     def ask_sim_weight_for_generation(self, generation: int) -> float:
         """Effective ask-pair similarity weight for a 0-indexed generation.
@@ -274,6 +278,7 @@ class EngineConfig:
             "ask_uncertainty_weight": self.ask_uncertainty_weight,
             "ask_novelty_weight": self.ask_novelty_weight,
             "explore_until_generation": self.explore_until_generation,
+            "gap_probe": self.gap_probe,
         }
 
     @classmethod
@@ -327,6 +332,12 @@ class EngineConfig:
                 raise ConfigError(f"engine.{key} must be a number")
             if not (lo <= v <= hi):
                 raise ConfigError(f"engine.{key} must be in [{lo}, {hi}]")
+            return v
+
+        def flag(key: str, default: bool) -> bool:
+            v = eng.get(key, default)
+            if not isinstance(v, bool):
+                raise ConfigError(f"engine.{key} must be a boolean")
             return v
 
         dedup_tau = eng.get("dedup_tau", None)
@@ -385,6 +396,7 @@ class EngineConfig:
             explore_until_generation=non_neg_int(
                 "explore_until_generation", base.explore_until_generation
             ),
+            gap_probe=flag("gap_probe", base.gap_probe),
         )
 
 

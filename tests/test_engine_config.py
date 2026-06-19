@@ -80,6 +80,9 @@ def test_load_defaults_and_overrides():
         {"engine": {"erosion_window": 7, "erosion_accel_ratio": 1.0, "erosion_persist": 3}}
     )
     assert (cfg_er.erosion_window, cfg_er.erosion_accel_ratio, cfg_er.erosion_persist) == (7, 1.0, 3)
+    # advisory gap probe flag: default off, opt-in boolean
+    assert EngineConfig().gap_probe is False
+    assert config.load_engine_config({"engine": {"gap_probe": True}}).gap_probe is True
 
 
 def test_example_domain_engine_overrides():
@@ -106,6 +109,7 @@ def test_example_domain_engine_overrides():
         ({"engine": {"erosion_window": 2}}, "erosion_window"),
         ({"engine": {"erosion_accel_ratio": 6}}, "erosion_accel_ratio"),
         ({"engine": {"erosion_persist": 0}}, "erosion_persist"),
+        ({"engine": {"gap_probe": "yes"}}, "gap_probe"),
         ({"engine": []}, "engine"),
     ],
 )
