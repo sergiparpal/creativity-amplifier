@@ -216,8 +216,20 @@ Then ask ONLY the `ask_pairs`, as short A-vs-B questions:
 
 > Which sharpens the direction better — **A** (…) or **B** (…)? (or "neither")
 
-Keep it to the returned pairs. Offer that the user can **pin** any idea as a
-stepping stone to keep exploring from.
+Keep the *comparison* questions to the returned pairs. But then **explicitly invite
+the user to pin any idea(s) they want to keep exploring from — including ideas that
+were not in the asked pairs**, e.g.:
+
+> Want me to pin any of these as a stepping stone? Any of them — not just A/B.
+
+Pinning is deliberately *not* limited to the asked pairs, and it is the user's main
+lever. The `ask_pairs` only refine a **low-weight** preference signal (`fitness`,
+clipped and weighted so it can never prune variety or pick the slate); a **pin** is
+the strong, durable signal — it is always kept as a parent for the next generation
+(step 6, `select_parents` never drops a pin) and recalled across sessions. So when
+the user likes a slate idea you didn't ask about, prompt them to pin it instead of
+letting it pass unrecorded. Pins **and** any free-form comparison the user volunteers
+(beyond the two suggested pairs) are both recorded in step 6.
 
 ---
 
