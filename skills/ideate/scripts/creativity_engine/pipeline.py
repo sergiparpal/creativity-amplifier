@@ -24,6 +24,7 @@ from . import (
     archive as archive_mod,
     config,
     diversity,
+    gap,
     memory,
     monitor,
     novelty,
@@ -554,6 +555,7 @@ def _persist_cycle(
     econfig: "config.EngineConfig",
     novelty_window: List[float],
     erosion_streak: int,
+    gap_record=None,
 ) -> None:
     """Write archive/embeddings/candidates, bump cycle metadata, roll the window."""
     state.write_archive(arc.to_dict())
@@ -581,6 +583,16 @@ def _persist_cycle(
     # cos_window calibration roll above. Already rolled/truncated by the assessor.
     meta["novelty_window"] = list(novelty_window)
     meta["erosion_streak"] = int(erosion_streak)
+    # Advisory: accumulate per-cycle gap records so real sessions build before/after
+    # evidence. Bounded; never read back by the engine. Independent of cos_window /
+    # novelty_window — a separate series.
+    if gap_record is not None and "gap" in gap_record:
+        gap_log = list(meta.get("gap_log", []))
+        gap_log.append({
+            "cycle": int(meta["cycles"]),
+            **{k: gap_record[k] for k in ("surface_spread", "mechanism_spread", "gap", "corr", "n")},
+        })
+        meta["gap_log"] = gap_log[-50:]  # bounded
     state.write_meta(meta)
 
 
@@ -784,11 +796,35 @@ def ingest(
             keep_ids.update(i for i in (ev.get("winner"), ev.get("loser")) if i)
     _maybe_prune_state(cand_store, stored_emb, keep_ids, econfig.state_prune_threshold)
 
+    # Advisory surface/mechanism gap (measurement only; off by default). Never touches
+    # selection, the monitor, the calibration window, or any gate — it only reads embeddings
+    # the cycle already produced. See gap.py / CLAUDE.md.
+    gap_record = None
+    if econfig.gap_probe:
+        try:
+            open_axis = spec.primary_axis
+            slate_cands = [cand_store[i] for i in slate_ids if i in cand_store]
+            slate_surf = _stack_embeddings(
+                [c["id"] for c in slate_cands if c["id"] in stored_emb],
+                stored_emb, vecs.shape[1],
+            )
+            if open_axis is not None and len(slate_cands) >= 2:
+                descs = [c.get("descriptor", {}) for c in slate_cands]
+                texts = [c.get("text", "") for c in slate_cands]
+                mech_vecs = embedder.embed(_open_axis_texts(open_axis, descs, texts))
+                gap_record = gap.surface_mechanism_gap(slate_surf, mech_vecs)
+            else:
+                gap_record = {"n": len(slate_cands), "surface_spread": 0.0,
+                              "mechanism_spread": 0.0, "gap": 0.0, "corr": None,
+                              "skipped": "no open axis or slate < 2"}
+        except Exception as exc:  # never let an advisory probe break a cycle
+            gap_record = {"skipped": f"gap probe failed ({exc})"}
+
     _persist_cycle(
         state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig,
-        erosion["novelty_window"], erosion["erosion_streak"],
+        erosion["novelty_window"], erosion["erosion_streak"], gap_record=gap_record,
     )
-    return {
+    result = {
         "slate": slate,
         "ask_pairs": ask_pairs,
         "ask_policy": ask_policy,
@@ -798,6 +834,9 @@ def ingest(
             state, spec, econfig.open_niches, econfig.open_niche_freeze_factor
         ),
     }
+    if gap_record is not None:
+        result["surface_mechanism_gap"] = gap_record
+    return result
 
 
 # --------------------------------------------------------------------------- #
