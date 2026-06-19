@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from . import config, diversity, embed, monitor, originality, pipeline
+from . import config, diversity, embed, gap, monitor, originality, pipeline
 from .archive import compute_niche
 from .state import State
 
@@ -177,6 +177,17 @@ def _place(candidates, spec, embedder, seed):
         nid, _ = compute_niche(c["descriptor"], spec, ocell)
         niche_ids.append(nid)
     return vecs, niche_ids
+
+
+def _mechanism_vecs(candidates, spec, embedder, seed):
+    """Open-axis (mechanism) embeddings for raw candidates, via the production
+    placement path so they match how the engine embeds mechanisms."""
+    descriptors = [c["descriptor"] for c in candidates]
+    texts = [c["text"] for c in candidates]
+    _open_axis, _cells, open_vecs = pipeline.assign_open_cells(
+        spec, descriptors, texts, embedder, seed
+    )
+    return open_vecs
 
 
 # --------------------------------------------------------------------------- #
@@ -407,6 +418,43 @@ def _originality_probe(spec, settings, embedder, seed) -> Dict[str, Any]:
     }
 
 
+def _surface_mechanism_gap_probe(spec, settings, embedder, seed) -> Dict[str, Any]:
+    """Advisory: the diverse slate's surface vs mechanism spread, plus the gap that a
+    surface-diverse / mechanism-monotone slate shows by contrast.
+
+    **Advisory only** — never a gate, never part of ``ok``, never fed into selection.
+    Sanity: holding the SAME (varied) surface texts but collapsing every mechanism to one
+    string must produce a LARGER gap (lower mechanism_spread) than the genuinely-varied
+    slate. Skips cleanly (like :func:`_live_semantic_check`) if the embedder can't be used.
+    """
+    try:
+        diverse = diverse_candidates(settings.candidates_per_generation)
+        surf, _ = _place(diverse, spec, embedder, seed)
+        sel = diversity.select_diverse(surf, k=spec.slate_size, seed=seed)
+        slate_surf = surf[sel]
+        slate_cands = [diverse[i] for i in sel]
+        mech_varied = _mechanism_vecs(slate_cands, spec, embedder, seed)
+        # Same surface, mechanism collapsed to a single string -> the gap by construction.
+        mono_cands = [
+            dict(c, descriptor={**c["descriptor"], "mechanism": "referral incentives"})
+            for c in slate_cands
+        ]
+        mech_mono = _mechanism_vecs(mono_cands, spec, embedder, seed)
+    except Exception as exc:  # pragma: no cover - depends on the environment
+        return {"ran": False, "skipped": True, "reason": f"embedder unavailable ({exc})"}
+    diverse_slate = gap.surface_mechanism_gap(slate_surf, mech_varied)
+    monotone = gap.surface_mechanism_gap(slate_surf, mech_mono)
+    return {
+        "ran": True,
+        "skipped": False,
+        "diverse_slate": diverse_slate,
+        "mechanism_monotone_fixture": monotone,
+        # Printed sanity only — NOT part of `ok`, never gates anything.
+        "sanity_monotone_gap_larger": bool(monotone["gap"] > diverse_slate["gap"]),
+        "note": "advisory; surface vs mechanism spread; never a gate, never in selection",
+    }
+
+
 def _collapse_reversal(spec, settings, axes, seed, home, project):
     """A samey generation must trip the monitor; the next diverse one recovers.
 
@@ -528,6 +576,9 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
         # deliberately NOT added to variety_gate["checks"] and NOT part of `ok`.
         # Never feed originality into the DPP `q` / selection geometry.
         originality_probe = _originality_probe(spec, settings, embedder, seed)
+        # Advisory only: surface vs mechanism spread of the slate. Deliberately NOT a
+        # variety_gate check and NOT part of `ok`; never fed into selection geometry.
+        gap_probe = _surface_mechanism_gap_probe(spec, settings, embedder, seed)
 
         written = {
             name: Path(p).exists()
@@ -547,6 +598,7 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             "collapse_reversal": reversal,
             "live_semantic": semantic,
             "originality_probe": originality_probe,
+            "gap_probe": gap_probe,
             "state_files_written": written,
             "cycles": SELFTEST_CYCLES,
             "embedder": embed.DEFAULT_PROVIDER if live else "hash",
