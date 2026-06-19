@@ -288,6 +288,7 @@ creativity-amplifier/                  # plugin root
 │   └── marketplace.json               # marketplace entry (for /plugin marketplace add)
 ├── hooks/
 │   ├── hooks.json                     # SessionStart hook: auto-provision the venv
+│   ├── provision.mjs                  # Node dispatcher: picks the matching OS launcher
 │   ├── provision.sh                   # POSIX launcher (sh / Git Bash / WSL)
 │   └── provision.ps1                  # Windows-PowerShell launcher
 ├── skills/ideate/
@@ -296,7 +297,7 @@ creativity-amplifier/                  # plugin root
 │   ├── config/domains/                # _schema.md, generic.yaml, examples/*.yaml
 │   └── scripts/
 │       ├── bootstrap.py               # cross-platform self-provisioning installer
-│       ├── setup.sh, pyproject.toml
+│       ├── setup.sh, pyproject.toml   # dev setup wrapper; package metadata (deps in requirements*.txt)
 │       ├── requirements.txt           # runtime deps (version-bounded)
 │       ├── requirements-dev.txt       # + pytest (dev/CI); requirements-local.txt = opt-in torch embedder
 │       └── creativity_engine/         # the Python engine (CLI)

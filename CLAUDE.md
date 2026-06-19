@@ -38,6 +38,12 @@ and any change must preserve it:
 - The embedder is deliberately a **different model family** from Claude (default
   `minishlab/potion-multilingual-128M`; opt-in high-fidelity `BAAI/bge-small-en-v1.5`) so
   "what's novel" isn't judged by the lineage that generated the ideas.
+- **Originality (distance-to-cliché) is measured, never selected on.** Unlike geometric *novelty*
+  (which has no external referent), `originality.py` scores how far an idea sits from an "obvious-set"
+  of clichés. It is **measurement only**: never wired into the DPP `q`/kernel, never part of the
+  self-test's `ok`, never steers the engine. The agent uses the obvious-set at *generation* time (the
+  `anti_cliche` operator — repel clichés); the engine only ever *measures* the result. Keeping it out
+  of selection is precisely what stops a cliché signal from pruning variety.
 - The **anti-collapse monitor is never bypassed** — when it flags convergence the skill raises
   diversity pressure next round; it is never removed or worked around.
 
@@ -61,8 +67,9 @@ Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
 
 - **End users (marketplace):** `/plugin marketplace add sergiparpal/creativity-amplifier`
   then `/plugin install creativity-amplifier@sergiparpal`. A `SessionStart` hook
-  (`hooks/hooks.json`, `async: true`) runs `bootstrap.py` in a detached background
-  process right after load — non-blocking, idempotent, concurrency-safe. The venv is
+  (`hooks/hooks.json`, `async: true`) runs a thin Node dispatcher (`hooks/provision.mjs`)
+  that hands off to `bootstrap.py` in a detached background process right after load —
+  non-blocking, idempotent, concurrency-safe. The venv is
   built in **`${CLAUDE_PLUGIN_DATA}/venv`** (the plugin's persistent data dir, so it
   survives plugin updates) and the engine is installed **non-editable** there. Default
   install is the **torch-free multilingual stack** (the `static` model2vec embedder,
@@ -76,9 +83,13 @@ Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
 + `pip` otherwise; it never auto-installs `uv` or any other tool. It writes the resolved
 interpreter path to `<venv>/engine-python.txt` (the skill reads this to locate the
 interpreter) and a content hash to `<venv>/install.stamp` (rebuild trigger on a plugin
-update that changes deps or — in non-editable mode — engine sources). The two
-`hooks/provision.*` launchers are thin: they only find a Python ≥ 3.11 and hand off to
-`bootstrap.py --background`. If the engine isn't ready when `/ideate` runs, the skill
+update that changes deps or — in non-editable mode — engine sources). The three
+`hooks/provision.*` files are thin: `provision.mjs` is a cross-platform Node dispatcher
+(the single command `hooks.json` registers) that detects the OS and invokes **only** the
+matching launcher — `provision.sh` (POSIX) or `provision.ps1` (native Windows) — so the
+wrong-OS launcher never fails noisily in the hook log; each launcher just finds a Python
+≥ 3.11 and hands off to `bootstrap.py --background`. If the engine isn't ready when
+`/ideate` runs, the skill
 shows a one-time "setting up…" message and finishes the build in the foreground.
 
 ## Commands
@@ -123,7 +134,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 | `remember` | append a comparison/pin to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
 | `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
-| `selftest` | full loop with stubbed LLM + human; value gate + collapse reversal |
+| `selftest` | full loop with stubbed LLM + human; value gate + collapse reversal + advisory originality probe |
 
 ## Architecture
 
@@ -138,6 +149,10 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   pipeline/monitor module constants remain only as fallback defaults for direct callers and the
   self-test (kept in sync with `EngineConfig` by `test_engine_config`).
 - `embed.py`, `novelty.py`, `diversity.py`, `monitor.py`, `archive.py` — the math (see below).
+- `originality.py` — advisory distance-to-cliché *measurement*, deliberately isolated from the math
+  above: it is never imported by the selection geometry and only ever consumed as a reported number
+  (see the invariant section). `novelty.py` is variety vs. this session; `originality.py` is distance
+  from an external obvious-set.
 - `state.py`, `memory.py` — file-based persistence and preference memory. The active learner
   (`select_ask_pairs`) scores candidate A-vs-B questions by a weighted sum of embedding
   **similarity**, fitness **uncertainty**, and **novelty**. The default weights favor *similar*
@@ -253,7 +268,10 @@ comparison ids, so the pruning is output-neutral.
 engine's diverse slate must beat a single-shot baseline on mean pairwise distance, Vendi score, and
 niche entropy, and DPP must beat naive first-N on the *same* pool — plus an **induced-collapse
 reversal** (a samey generation trips the monitor; the next generation recovers once diversity
-pressure rises). Treat a `selftest` failure as a real regression in the diversity guarantees.
+pressure rises). It also runs an **advisory originality probe** (`_originality_probe`): it scores the
+diverse slate's distance to a **held-out** half (`O_test`) of a clichéd obvious-set — held out so the
+measure stays non-circular — and reports it as a printed-only sanity number that is **never part of
+`ok`**. Treat a `selftest` failure as a real regression in the diversity guarantees.
 
 ## Conventions & gotchas
 
