@@ -855,10 +855,11 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     mon = monitor.evaluate(elite_vecs, arc.niche_counts())
     # Open-axis freeze progress from the persisted engine knobs (fall back to the
     # module defaults for older projects whose meta predates the engine block).
-    eng = sess.state.read_meta().get("engine") or {}
+    meta = sess.state.read_meta()
+    eng = meta.get("engine") or {}
     open_niches = int(eng.get("open_niches", OPEN_NICHES))
     freeze_factor = int(eng.get("open_niche_freeze_factor", OPEN_NICHE_FREEZE_FACTOR))
-    return {
+    result = {
         "entropy": mon["entropy"],
         "mean_cosine": mon["mean_cosine"],
         "coverage": mon["coverage"],
@@ -867,6 +868,13 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
             sess.state, sess.spec, open_niches, freeze_factor
         ),
     }
+    # Advisory passthrough of the gap probe's per-cycle log (see gap.py / ingest). Present
+    # only after gap_probe has run; omitted otherwise so the off-path output is unchanged.
+    # Never read back by the engine; never affects archive health, the monitor, or selection.
+    gap_log = meta.get("gap_log")
+    if gap_log:
+        result["gap_log"] = gap_log
+    return result
 
 
 # --------------------------------------------------------------------------- #

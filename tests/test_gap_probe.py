@@ -73,6 +73,20 @@ def test_gap_probe_emits_and_persists_when_on(home):
     assert len(log) == 1 and "gap" in log[0]
 
 
+def test_metrics_surfaces_gap_log_only_when_present(home):
+    off = _axes()
+    pipeline.init_project("off", off, seed=0, home=home)
+    t = int(State("off", home=home).read_meta()["candidates_per_generation"])
+    pipeline.ingest("off", selftest.diverse_candidates(t), off, seed=0, home=home)
+    assert "gap_log" not in pipeline.metrics("off", home=home)   # off -> not surfaced
+
+    on = _axes({"gap_probe": True})
+    pipeline.init_project("on", on, seed=0, home=home)
+    pipeline.ingest("on", selftest.diverse_candidates(t), on, seed=0, home=home)
+    m = pipeline.metrics("on", home=home)
+    assert m["gap_log"] and "gap" in m["gap_log"][0]             # on -> the persisted series
+
+
 def test_selftest_reports_gap_probe_and_never_gates_ok():
     rep = selftest.run()  # hermetic temp home, hash embedder
     assert "gap_probe" in rep
