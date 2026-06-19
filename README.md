@@ -58,6 +58,13 @@ In Claude Code, add this repo as a plugin marketplace and install the plugin:
 /plugin install creativity-amplifier@sergiparpal
 ```
 
+**Updating to the latest version:** if you don't have the latest version of the plugin
+installed, update it by running:
+
+```
+claude plugin update creativity-amplifier@sergiparpal
+```
+
 That's it — no clone, no `setup.sh`, no `--plugin-dir`. On the next session start, the
 plugin **provisions its own Python engine in the background**: it builds a virtualenv
 and installs the default stack (numpy, scikit-learn, and the multilingual
