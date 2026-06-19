@@ -97,6 +97,13 @@ TRIZ inventive principle (segmentation, asymmetry, "the other way round",
 nesting, prior counteraction, self-service) to dissolve the contradiction rather
 than compromise it.
 
+### `principle_first`
+Pick the **mechanism before the surface**. Enumerate candidate mechanisms that sit
+far from `O_train` and from each other; assign **one distinct mechanism per idea**;
+then realize each as a surface concept. Surface variety follows mechanism variety,
+never the reverse. Pairs naturally with `analogy` and `biomimicry` (strong mechanism
+sources) and with `anti_cliche` (steer mechanisms away from the obvious-set).
+
 ---
 
 ## Descriptor discipline
@@ -111,10 +118,12 @@ Protect this input contract. For every candidate, fill the resolved axes honestl
   extremes** (e.g. `boldness` near 0 or 1) over clustering everything in the
   middle.
 - **open / primary-novelty** → a few words naming the *core mechanism* — the
-  thing that makes this idea work. This is the **primary-novelty niche** the
-  engine carries, so **no two candidates may share an identical `mechanism` string
-  unless they genuinely share a mechanism.** Distinct ideas must name distinct
-  mechanisms.
+  thing that makes this idea work. The `mechanism` is **chosen first** (Layer 1 of
+  generation: see `principle_first`), and the surface idea is written to express it —
+  so mechanism distinctness is decided up front, not retrofitted. This is the
+  **primary-novelty niche** the engine carries, so **no two candidates may share an
+  identical `mechanism` string unless they genuinely share a mechanism.** Distinct
+  ideas must name distinct mechanisms.
 - Make every axis value **meaningfully distinct**, not a cosmetic re-wording of
   another candidate's. Two descriptors that differ only superficially land in the
   same niche and compete as one — variety you never get back.
