@@ -28,6 +28,8 @@ def test_ensure_creates_tmp_scratch_dir(home):
     assert st.tmp_dir.exists() and st.tmp_dir.is_dir()
     assert st.tmp_dir == st.root / "tmp"
     assert st.paths()["tmp"] == str(st.tmp_dir)
+    # open_nicher.json is part of the project's geometric state, so paths() lists it.
+    assert st.paths()["open_nicher"] == str(st.open_nicher_path)
 
 
 def test_json_round_trip(home):

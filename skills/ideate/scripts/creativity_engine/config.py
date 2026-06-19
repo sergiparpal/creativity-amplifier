@@ -616,6 +616,36 @@ def load_engine_config(source: Union[str, Path, Dict[str, Any]]) -> EngineConfig
     return EngineConfig.from_dict(_load_config_dict(source))
 
 
+def load_all(
+    source: Union[str, Path, Dict[str, Any]]
+) -> Tuple[AxesSpec, SessionSettings, EngineConfig]:
+    """Load axes + session settings + engine config in a SINGLE file read.
+
+    The three single-purpose loaders each re-read and re-parse the source; a caller
+    that needs more than one (``init_project``) should use this to touch the file
+    once. Equivalent to calling the three loaders, just without the extra reads.
+    """
+    d = _load_config_dict(source)
+    return (
+        axes_spec_from_dict(d),
+        SessionSettings.from_dict(d),
+        EngineConfig.from_dict(d),
+    )
+
+
+def load_axes_and_engine(
+    source: Union[str, Path, Dict[str, Any]]
+) -> Tuple[AxesSpec, EngineConfig]:
+    """Load axes + engine config in one file read (the pair ``ingest`` consumes).
+
+    Deliberately does NOT parse :class:`SessionSettings`: ``ingest`` never reads them,
+    and an axes file with malformed settings must not fail a cycle that doesn't touch
+    them (settings are validated once, at ``init`` time).
+    """
+    d = _load_config_dict(source)
+    return axes_spec_from_dict(d), EngineConfig.from_dict(d)
+
+
 def generic_axes_path() -> Path:
     """Absolute path to the bundled neutral fallback ``generic.yaml``."""
     # creativity_engine/config.py -> .../skills/ideate/scripts/creativity_engine

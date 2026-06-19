@@ -76,27 +76,51 @@ def init_project(
     The axes geometry goes to ``axes.json``; the agent-/session-level settings
     that ride alongside it (candidates-per-generation, judge rubric) are
     recorded in ``meta.json`` — kept out of the engine's :class:`AxesSpec`.
+
+    Re-initing an EXISTING project whose axes geometry changed would otherwise leave
+    stale niche keys mixed with new ones (the archive is keyed by the old axes). When
+    the incoming axes differ from the persisted snapshot and geometric state exists,
+    that state (archive / candidates / embeddings / frozen open-nicher) is reset and
+    the geometry-coupled meta series dropped; preference memory is preserved. Identical
+    axes -> idempotent, nothing reset. Runs under the project lock (see ``ingest``).
     """
-    spec = config.load_axes(axes_source)
-    settings = config.load_session_settings(axes_source)
-    econfig = config.load_engine_config(axes_source)
+    spec, settings, econfig = config.load_all(axes_source)
     sess = Session(project, home=home, seed=seed).ensure()
-    sess.adopt_spec(spec)
-    meta = sess.state.read_meta()
-    meta.update(
-        {
-            "project": project,
-            "domain": spec.domain,
-            "unit_of_generation": spec.unit_of_generation,
-            "candidates_per_generation": settings.candidates_per_generation,
-            "judge_rubric": settings.judge_rubric,
-            "engine": econfig.to_dict(),
-            "seed": int(seed),
-            "version": __version__,
-        }
-    )
-    sess.state.write_meta(meta)
-    return {"ok": True, "domain": spec.domain, "paths": sess.state.paths()}
+    state = sess.state
+    with state.project_lock():
+        # Geometry-incompatible re-init: compare ONLY the axes list (what niche keys
+        # are built from) — not slate_size/domain/unit, which don't affect placement.
+        prev_axes = state.read_axes()
+        reset = False
+        if isinstance(prev_axes, dict) and prev_axes:
+            geometry_changed = (
+                prev_axes.get("axes") != [a.to_dict() for a in spec.axes]
+            )
+            if geometry_changed and state.read_archive().get("niches"):
+                state.reset_geometry()
+                reset = True
+        sess.adopt_spec(spec)
+        meta = state.read_meta()
+        if reset:
+            # The monitor/erosion/gap series and the cycle counter are tied to the
+            # old geometry; drop them so calibration restarts under the new axes.
+            for key in ("cycles", "cos_window", "novelty_window",
+                        "erosion_streak", "gap_log"):
+                meta.pop(key, None)
+        meta.update(
+            {
+                "project": project,
+                "domain": spec.domain,
+                "unit_of_generation": spec.unit_of_generation,
+                "candidates_per_generation": settings.candidates_per_generation,
+                "judge_rubric": settings.judge_rubric,
+                "engine": econfig.to_dict(),
+                "seed": int(seed),
+                "version": __version__,
+            }
+        )
+        state.write_meta(meta)
+    return {"ok": True, "domain": spec.domain, "reset": reset, "paths": state.paths()}
 
 
 # --------------------------------------------------------------------------- #
@@ -399,7 +423,13 @@ def _empty_cycle(
     mon["submitted"] = 0
     mon["target_candidates"] = int(meta.get("candidates_per_generation", 0) or 0)
     mon["under_generation"] = False
-    mon["variety_eroding"] = False
+    # An empty generation is a no-op for the erosion sensor (no survivor novelty to
+    # feed it), so report the LAST persisted streak's flag rather than a hard False —
+    # an in-progress collapse streak shouldn't read as "not eroding" just because one
+    # generation arrived empty. Nothing is persisted here, so the streak is unchanged.
+    mon["variety_eroding"] = (
+        int(meta.get("erosion_streak", 0)) >= econfig.erosion_persist
+    )
     in_explore = (
         econfig.explore_until_generation > 0
         and gen_index < econfig.explore_until_generation
@@ -603,10 +633,28 @@ def ingest(
     seed: int = 0,
     home: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Embed → dedup → place → novelty → archive → DPP → monitor for one cycle."""
-    spec = config.load_axes(axes_source)
-    econfig = config.load_engine_config(axes_source)
+    """Embed → dedup → place → novelty → archive → DPP → monitor for one cycle.
+
+    The whole-project read-modify-write (archive / candidates / embeddings / meta)
+    runs under a best-effort cross-process lock (``State.project_lock``) so two
+    concurrent cycles on the same project can't clobber each other's generation (a
+    lost update). On lock timeout it proceeds unlocked rather than deadlock.
+    """
+    spec, econfig = config.load_axes_and_engine(axes_source)
     sess = Session(project, home=home, seed=seed).ensure()
+    with sess.state.project_lock():
+        return _ingest_locked(sess, spec, econfig, project, candidates, seed)
+
+
+def _ingest_locked(
+    sess: Session,
+    spec: AxesSpec,
+    econfig: "config.EngineConfig",
+    project: str,
+    candidates,
+    seed: int,
+) -> Dict[str, Any]:
+    """One ingest cycle, run while holding the project lock (see :func:`ingest`)."""
     state = sess.state
     # The axes passed in are authoritative for this cycle; snapshot them only on
     # a fresh project so an existing project keeps its original resolved axes.
@@ -802,7 +850,7 @@ def ingest(
     gap_record = None
     if econfig.gap_probe:
         try:
-            open_axis = spec.primary_axis
+            # open_axis is already resolved above (== spec.primary_axis).
             slate_cands = [cand_store[i] for i in slate_ids if i in cand_store]
             slate_surf = _stack_embeddings(
                 [c["id"] for c in slate_cands if c["id"] in stored_emb],
@@ -848,17 +896,23 @@ def metrics(project: str, home: Optional[Path] = None) -> Dict[str, Any]:
     arc = archive_mod.Archive.from_dict(sess.spec, sess.state.read_archive())
     stored_emb = sess.state.read_embeddings()
     elite_ids = [i for i in arc.elite_ids() if i in stored_emb]
-    # dim only matters in the empty case (the resulting (0, dim) array is never
-    # used in arithmetic); take it from a stored vector when one exists.
-    dim = len(next(iter(stored_emb.values()))) if stored_emb else 1
-    elite_vecs = _stack_embeddings(elite_ids, stored_emb, dim=dim)
-    mon = monitor.evaluate(elite_vecs, arc.niche_counts())
-    # Open-axis freeze progress from the persisted engine knobs (fall back to the
-    # module defaults for older projects whose meta predates the engine block).
+    # Engine knobs from the persisted meta (fall back to the module defaults for older
+    # projects whose meta predates the engine block).
     meta = sess.state.read_meta()
     eng = meta.get("engine") or {}
     open_niches = int(eng.get("open_niches", OPEN_NICHES))
     freeze_factor = int(eng.get("open_niche_freeze_factor", OPEN_NICHE_FREEZE_FACTOR))
+    # The mean-pairwise-cosine snapshot is O(E²·d); cap the vectors it runs on to the
+    # most-novel ``novelty_ref_cap`` elites so a large archive stays cheap. Entropy and
+    # coverage still use the FULL niche occupancy (cheap counts) and ``n`` still reports
+    # the true elite count, so at/below the cap this is identical to before.
+    cap = int(eng.get("novelty_ref_cap", NOVELTY_REF_CAP))
+    cos_ids = _novelty_reference_ids(arc, stored_emb, cap=cap)
+    # dim only matters in the empty case (the resulting (0, dim) array is never used in
+    # arithmetic); take it from a stored vector when one exists.
+    dim = len(next(iter(stored_emb.values()))) if stored_emb else 1
+    cos_vecs = _stack_embeddings(cos_ids, stored_emb, dim=dim)
+    mon = monitor.evaluate(cos_vecs, arc.niche_counts())
     result = {
         "entropy": mon["entropy"],
         "mean_cosine": mon["mean_cosine"],

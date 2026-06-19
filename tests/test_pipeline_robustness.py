@@ -50,3 +50,33 @@ def test_empty_cycle_returns_full_schema(home):
     assert res["monitor"]["under_generation"] is False
     assert res["monitor"]["variety_eroding"] is False
     assert res["monitor"]["collapsing"] is False
+
+
+def test_empty_cycle_reflects_persisted_erosion_streak(home):
+    # An empty generation is a no-op for the erosion sensor, but it must report the
+    # LAST persisted streak's flag rather than a hard False — an in-progress streak
+    # shouldn't read as "not eroding" just because one generation arrived empty.
+    pipeline.init_project("ee", _generic(), seed=0, home=home)
+    st = State("ee", home=home)
+    meta = st.read_meta()
+    persist = int(meta["engine"]["erosion_persist"])
+    meta["erosion_streak"] = persist  # already at the flag threshold
+    st.write_meta(meta)
+    res = pipeline.ingest("ee", [], _generic(), seed=0, home=home)
+    assert res["monitor"]["variety_eroding"] is True
+
+
+def test_metrics_caps_cosine_vectors_but_reports_full_n(home):
+    # With a tiny novelty_ref_cap, metrics computes mean_cosine over only the capped
+    # most-novel elites yet still reports the FULL elite count and runs cleanly.
+    axes = _generic()
+    axes["engine"] = {"novelty_ref_cap": 3}
+    pipeline.init_project("cap", axes, seed=0, home=home)
+    target = int(State("cap", home=home).read_meta()["candidates_per_generation"])
+    pipeline.ingest("cap", selftest.diverse_candidates(target), axes, seed=0, home=home)
+    arc_n = len(State("cap", home=home).read_archive()["niches"])
+    assert arc_n > 3, "fixture should produce more elites than the cap"
+    res = pipeline.metrics("cap", home=home)
+    assert res["n"] == arc_n              # true count, not the cap
+    assert isinstance(res["mean_cosine"], float)
+    assert res["coverage"] >= 1

@@ -148,6 +148,31 @@ def test_template_method_normalizes_any_provider():
     assert RawProvider().embed([]).shape == (0, 3)
 
 
+def test_empty_embed_resolves_lazy_dim():
+    # An embedder whose dim is resolved lazily (model loaded on first real embed)
+    # must still return a correctly-WIDE empty array, so an accidental embed([])
+    # before the first real call can't yield a 0-width array that would later trip
+    # pipeline._guard_embedding_dim.
+    class LazyDim(embed.Embedder):
+        name = "lazy"
+
+        def __init__(self):
+            self.dim = 0  # unknown until "loaded"
+
+        def _ensure(self):
+            self.dim = 7
+
+        def _dim_for_empty(self):
+            self._ensure()
+            return self.dim
+
+        def _embed_raw(self, texts):
+            self._ensure()
+            return np.ones((len(texts), self.dim), dtype=np.float32)
+
+    assert LazyDim().embed([]).shape == (0, 7)
+
+
 def test_dedup_tau_is_per_embedder():
     # Each family gets its own near-duplicate threshold; the scales differ.
     assert default_dedup_tau("hash") == 0.92

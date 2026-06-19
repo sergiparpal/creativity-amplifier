@@ -270,8 +270,31 @@ class State:
             "archive": str(self.archive_path),
             "candidates": str(self.candidates_path),
             "embeddings": str(self.embeddings_path),
+            "open_nicher": str(self.open_nicher_path),
             "tmp": str(self.tmp_dir),
         }
+
+    def reset_geometry(self) -> None:
+        """Delete this project's geometric state — the MAP-Elites archive, candidate
+        records, embeddings, and the frozen open-axis nicher — so the project can be
+        re-initialized under a NEW axes geometry without mixing stale niche keys with
+        new ones. Preference memory (pins/discards/comparisons, namespaced per domain)
+        is deliberately left intact. Best-effort: a missing file is not an error."""
+        for path in (self.archive_path, self.candidates_path,
+                     self.embeddings_path, self.open_nicher_path):
+            with contextlib.suppress(OSError):
+                path.unlink(missing_ok=True)
+
+    def project_lock(self, timeout: float = _LOCK_TIMEOUT):
+        """Cross-process lock serializing a whole-project read-modify-write cycle.
+
+        ``ingest`` (and an axes-changing ``init``) read the archive/candidates/
+        embeddings/meta, mutate them, and write them back; without serialization two
+        concurrent cycles on one project would clobber each other (a lost generation).
+        Same best-effort ``mkdir`` lock as the pin/discard guard — on timeout it
+        proceeds unlocked rather than deadlock. The lock dir sits beside the state
+        files as ``<root>/.project.lock``."""
+        return _file_lock(self.root / ".project", timeout=timeout)
 
     # -- generic json helpers ---------------------------------------------- #
     def read_json(self, path: Path, default: Any = None) -> Any:

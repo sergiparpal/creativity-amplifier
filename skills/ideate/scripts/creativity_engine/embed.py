@@ -87,8 +87,16 @@ class Embedder:
     def embed(self, texts: Sequence[str]) -> np.ndarray:
         texts = [t if isinstance(t, str) else str(t) for t in texts]
         if not texts:
-            return np.zeros((0, self.dim), dtype=np.float32)
+            return np.zeros((0, self._dim_for_empty()), dtype=np.float32)
         return l2_normalize(self._embed_raw(texts))
+
+    def _dim_for_empty(self) -> int:
+        """Width of the empty-input result. Defaults to ``self.dim``; embedders whose
+        ``dim`` is resolved LAZILY (model loaded on first real embed) override this to
+        resolve it, so an accidental ``embed([])`` before the first real call can't
+        return a 0-width array that would later trip ``_guard_embedding_dim``. Eager-dim
+        providers (hash / api / tests) keep the default and load nothing."""
+        return self.dim
 
     def _embed_raw(self, texts: List[str]) -> np.ndarray:  # pragma: no cover
         """Return UNnormalized ``(n, d)`` rows; the base class normalizes them."""
@@ -138,6 +146,10 @@ class StaticEmbedder(Embedder):
             self.dim = int(self._model.dim)
         return self._model
 
+    def _dim_for_empty(self) -> int:
+        self._ensure()  # dim is unknown until the model loads
+        return self.dim
+
     def _embed_raw(self, texts: List[str]) -> np.ndarray:
         model = self._ensure()
         # StaticModel.encode already returns a float32 ndarray; the base class
@@ -166,6 +178,10 @@ class LocalEmbedder(Embedder):
             )
             self.dim = int(get_dim())
         return self._model
+
+    def _dim_for_empty(self) -> int:
+        self._ensure()  # dim is unknown until the model loads
+        return self.dim
 
     def _embed_raw(self, texts: List[str]) -> np.ndarray:
         model = self._ensure()

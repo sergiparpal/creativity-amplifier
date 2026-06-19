@@ -385,10 +385,10 @@ def _originality_probe(spec, settings, embedder, seed) -> Dict[str, Any]:
         "Send a retargeting email blast to lapsed users",
     ]
     half = len(obvious) // 2
-    # Disjoint split. Only O_test is scored; O_train would be the repellent a live
-    # generator avoids — the canned diverse_candidates here ignores it, which is
-    # fine: the point is to measure against the *held-out* half.
-    o_train, o_test = obvious[:half], obvious[half:]  # noqa: F841 (o_train documents the split)
+    # Disjoint split: obvious[:half] is O_train (the repellent a live generator would
+    # avoid; the canned diverse_candidates here ignores it). Only the held-out O_test
+    # is scored, which keeps the measure non-circular.
+    o_test = obvious[half:]
     try:
         o_test_vecs = embedder.embed(o_test)
         # The engine's diverse slate: place diverse candidates, let DPP pick.
@@ -585,7 +585,10 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
             for name, p in state.paths().items()
             if name != "root"
         }
-        files_ok = all(written.values())
+        # open_nicher.json is written only for specs WITH an open axis; it's reported
+        # above for visibility but kept out of the gate (the generic axes here do have
+        # one, but the gate stays honest about what is actually mandatory).
+        files_ok = all(v for k, v in written.items() if k != "open_nicher")
         # A skipped semantic check doesn't fail the gate; a ran-and-failed one does.
         semantic_ok = (not semantic.get("ran")) or bool(semantic.get("passed"))
 
