@@ -236,6 +236,25 @@ enabled, the skill also gives the user a plain-language, session-end summary of 
 (`SKILL.md` step 10 / `loop.md` §8) — still advisory: it reports the measurement and never
 steers selection.
 
+**Mechanism-first generation + mechanism-space novelty** (G4 + S4): generation is
+**mechanism-first** (G4, prose) — the agent commits to a distinct `mechanism` (the open /
+`primary_novelty` axis value) *before* writing each surface idea, since that is the axis the
+engine niches on (`SKILL.md` step 4 / `operators.md` → `principle_first`). To make that
+observable, the engine also reports **novelty in mechanism space** (S4): `mechanism_novelty`
+per slate item (k-NN distance of an idea's mechanism embedding to the session's accumulated
+mechanisms — the *same* k-NN kernel as the surface `novelty`, run on the open-axis embedding),
+`slate_mechanism_novelty` on the `ingest` result, and `mechanism_spread` / `mechanism_n` in
+`metrics`, all backed by a parallel `mech_embeddings.json` store (filled from `open_vecs`, the
+same L2-normalized embedder). S4 is **advisory measurement only** — like `novelty`,
+`originality.py`, and the gap probe it is **measured, never selected on**: never in dedup, the
+DPP `q`/kernel, parents, the fitness clip, the monitor, or `selftest`'s `ok`; the slate is still
+selected on surface geometry. Note the deliberate name reuse: the archive-scoped
+`metrics["mechanism_spread"]` (mean pairwise distance over elite mechanism vectors) is **distinct
+from** the slate-scoped `mechanism_spread` inside the optional `surface_mechanism_gap` block
+(`gap.py`) — different dict, different scope. Reading: if `mechanism_spread` tracks the surface
+spread (and `mechanism_novelty` stays healthy across a session), mechanism diversity is keeping
+up; a persistent low `mechanism_spread` with high surface diversity is the residual gap.
+
 **Niching** (`archive.py`): a niche key combines one bucket per axis — `categorical` → the value,
 `continuous` → bin index over its range, `open` → a **frozen Voronoi cell** over the *embedding* of
 the axis value (`CVTNicher`). The open-axis partition is **data-adaptive (fit-once-then-freeze)**:

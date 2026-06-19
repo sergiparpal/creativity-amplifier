@@ -129,7 +129,10 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    field: it is **mean k-NN distance to this session's own ideas (elites + this
    batch)** — a *variety* proxy, NOT originality vs. prior art / the world. Read a
    high `novelty` as "unlike the other ideas in this run", and don't present it to
-   the user as proof an idea is novel to the world.
+   the user as proof an idea is novel to the world. Each slate item also carries
+   `mechanism_novelty` — the variety of its *mechanism* vs the session's own
+   mechanisms (a mechanism-space analog of `novelty`, same k-NN kernel on the open
+   axis). Advisory like `novelty`/originality: report it, never select on it.
 8. **Record & continue.** For each answer/pin/discard run `ENGINE remember`
    (`{"type":"pin","id":…}`, `{"type":"discard","id":…}`, or
    `{"type":"comparison","winner":…,"loser":…}`); then `ENGINE parents` to get diverse
