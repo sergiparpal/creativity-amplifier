@@ -274,6 +274,7 @@ class State:
             "archive": str(self.archive_path),
             "candidates": str(self.candidates_path),
             "embeddings": str(self.embeddings_path),
+            "mech_embeddings": str(self.mech_embeddings_path),
             "open_nicher": str(self.open_nicher_path),
             "tmp": str(self.tmp_dir),
         }

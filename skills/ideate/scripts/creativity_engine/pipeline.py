@@ -182,6 +182,26 @@ def _survivor_novelty(
     return novelty.mean_knn_distance(dist, k, n_neighbors=ref.shape[0] - 1)
 
 
+def _survivor_mechanism_novelty(
+    open_vecs: np.ndarray,
+    open_axis: Optional[Any],
+    existing_ids: List[str],
+    stored_mech_emb: Dict[str, List[float]],
+    k: int,
+    n_survivors: int,
+) -> Optional[np.ndarray]:
+    """Mechanism-space novelty for survivors: mean k-NN distance of each survivor's
+    mechanism embedding to (archive mechanisms ∪ other survivors). Returns None when
+    there is no open axis (nothing to measure). Same kernel as surface novelty."""
+    if open_axis is None or open_vecs.shape[0] != n_survivors or n_survivors == 0:
+        return None
+    dim = int(open_vecs.shape[1])
+    ref_ids = [i for i in existing_ids
+               if i in stored_mech_emb and len(stored_mech_emb[i]) == dim]
+    existing_mech = _stack_embeddings(ref_ids, stored_mech_emb, dim)
+    return _survivor_novelty(open_vecs, existing_mech, k)
+
+
 def _slate_item(record: Dict[str, Any]) -> Dict[str, Any]:
     """Shape one elite record into a slate item for the agent/human.
 
@@ -373,6 +393,7 @@ def _maybe_prune_state(
     stored_emb: Dict[str, List[float]],
     keep_ids: set,
     threshold: int,
+    stored_mech_emb: Optional[Dict[str, List[float]]] = None,
 ) -> int:
     """Drop candidate records + embeddings that are never read again, in place.
 
@@ -389,10 +410,17 @@ def _maybe_prune_state(
     for cid in drop:
         cand_store.pop(cid, None)
         stored_emb.pop(cid, None)
+        if stored_mech_emb is not None:
+            stored_mech_emb.pop(cid, None)
     # stored_emb ids are a subset of cand_store ids in practice, but sweep any
     # orphaned (non-kept) embeddings too so the two stores stay aligned.
     for cid in [c for c in stored_emb if c not in keep_ids and c not in cand_store]:
         stored_emb.pop(cid, None)
+    # Mirror the orphan sweep for the parallel mechanism store (advisory; S4).
+    if stored_mech_emb is not None:
+        for cid in [c for c in stored_mech_emb
+                    if c not in keep_ids and c not in cand_store]:
+            stored_mech_emb.pop(cid, None)
     return len(drop)
 
 
@@ -511,8 +539,18 @@ def _place_survivors(
     arc: "archive_mod.Archive",
     cand_store: Dict[str, Any],
     stored_emb: Dict[str, List[float]],
+    open_vecs: Optional[np.ndarray] = None,
+    mech_novelties: Optional[np.ndarray] = None,
+    stored_mech_emb: Optional[Dict[str, List[float]]] = None,
 ) -> None:
-    """Insert each survivor into its niche; record its candidate + embedding."""
+    """Insert each survivor into its niche; record its candidate + embedding.
+
+    When the mechanism-space args are supplied (``open_vecs`` / ``mech_novelties`` /
+    ``stored_mech_emb``) each survivor also gets an advisory ``mechanism_novelty`` on
+    its record and its mechanism embedding persisted to the parallel store. They are
+    defaulted so the function stays safe to call without them (measurement only — see
+    CLAUDE.md / S4); they never touch placement, the elite rule, or the surface store.
+    """
     for idx, c in enumerate(survivors):
         ocell = {}
         if open_axis is not None and cells[idx] is not None:
@@ -520,13 +558,14 @@ def _place_survivors(
         nid, coords = archive_mod.compute_niche(c.descriptor, spec, ocell)
         nov = float(novelties[idx])
         arc.place(c.id, nid, coords, fitness=c.fitness, novelty=nov)
-        cand_store[c.id] = {
-            **c.to_dict(),
-            "niche_id": nid,
-            "coords": coords,
-            "novelty": nov,
-        }
+        record = {**c.to_dict(), "niche_id": nid, "coords": coords, "novelty": nov}
+        if mech_novelties is not None:
+            record["mechanism_novelty"] = round(float(mech_novelties[idx]), 4)
+        cand_store[c.id] = record
         stored_emb[c.id] = [float(x) for x in surv_vecs[idx]]
+        if (stored_mech_emb is not None and open_vecs is not None
+                and open_axis is not None and idx < open_vecs.shape[0]):
+            stored_mech_emb[c.id] = [float(x) for x in open_vecs[idx]]
 
 
 def _select_slate(
@@ -586,10 +625,14 @@ def _persist_cycle(
     novelty_window: List[float],
     erosion_streak: int,
     gap_record=None,
+    stored_mech_emb: Optional[Dict[str, List[float]]] = None,
 ) -> None:
     """Write archive/embeddings/candidates, bump cycle metadata, roll the window."""
     state.write_archive(arc.to_dict())
     state.write_embeddings(stored_emb)
+    # Advisory parallel store (S4). Always written — even an empty {} — so the
+    # paths()-listed file is present on disk after any cycle (measurement only).
+    state.write_mech_embeddings(stored_mech_emb or {})
     state.write_candidates(cand_store)
     meta = state.read_meta()
     meta["cycles"] = int(meta.get("cycles", 0)) + 1
@@ -685,6 +728,7 @@ def _ingest_locked(
         return _empty_cycle(state, arc, spec, econfig)
 
     stored_emb: Dict[str, List[float]] = state.read_embeddings()
+    stored_mech_emb: Dict[str, List[float]] = state.read_mech_embeddings()
     cand_store: Dict[str, Any] = state.read_candidates()
 
     embedder = sess.embedder
@@ -718,9 +762,17 @@ def _ingest_locked(
     # S2 — per-generation survivor mean novelty, fed to the variety-erosion sensor
     # below (a separate, post-dedup series; the monitor still runs on RAW vectors).
     surv_mean_novelty = float(np.mean(novelties)) if novelties.size else None
+    # S4 — mechanism-space novelty (advisory). Same k-NN kernel as surface novelty,
+    # computed on the mechanism (open-axis) embeddings; never enters selection.
+    mech_novelties = _survivor_mechanism_novelty(
+        open_vecs, open_axis, existing_ids, stored_mech_emb,
+        econfig.knn_k, len(survivors),
+    )
     _place_survivors(
         survivors, surv_vecs, cells, novelties, open_axis,
         spec, arc, cand_store, stored_emb,
+        open_vecs=open_vecs, mech_novelties=mech_novelties,
+        stored_mech_emb=stored_mech_emb,
     )
 
     # Accumulate the mechanism embeddings; once enough exist, fit + freeze the
@@ -842,7 +894,10 @@ def _ingest_locked(
     for ev in comparisons:
         if ev.get("type") == "comparison":
             keep_ids.update(i for i in (ev.get("winner"), ev.get("loser")) if i)
-    _maybe_prune_state(cand_store, stored_emb, keep_ids, econfig.state_prune_threshold)
+    _maybe_prune_state(
+        cand_store, stored_emb, keep_ids, econfig.state_prune_threshold,
+        stored_mech_emb=stored_mech_emb,
+    )
 
     # Advisory surface/mechanism gap (measurement only; off by default). Never touches
     # selection, the monitor, the calibration window, or any gate — it only reads embeddings
@@ -871,6 +926,7 @@ def _ingest_locked(
     _persist_cycle(
         state, arc, stored_emb, cand_store, vecs, embedder, mon, econfig,
         erosion["novelty_window"], erosion["erosion_streak"], gap_record=gap_record,
+        stored_mech_emb=stored_mech_emb,
     )
     result = {
         "slate": slate,
