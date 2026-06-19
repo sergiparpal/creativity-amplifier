@@ -95,7 +95,14 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    `ENGINE ingest --project PROJECT --candidates $TMP/candidates.json --axes $TMP/axes.json`.
 7. **Present** the returned `slate` (show each idea with its niche `coords` so the
    user can judge distinctness). Ask only the returned `ask_pairs` as short
-   A-vs-B questions. Let the user pin "stepping stones". Note on the `novelty`
+   A-vs-B questions, then **explicitly invite the user to pin any idea they like as
+   a "stepping stone" — including ideas that were NOT in the asked pairs** (e.g.
+   "Want me to pin any of these to keep exploring from? — any of them, not just A/B").
+   Pinning is the user's strongest, most durable preference signal: pins are always
+   kept as parents for the next generation and recalled across sessions, whereas the
+   A-vs-B pairs only refine a **low-weight** `fitness` signal that can never prune
+   variety. So if the user's favorite is an idea you didn't ask about, prompt them to
+   pin it rather than let it pass unrecorded. Note on the `novelty`
    field: it is **mean k-NN distance to this session's own ideas (elites + this
    batch)** — a *variety* proxy, NOT originality vs. prior art / the world. Read a
    high `novelty` as "unlike the other ideas in this run", and don't present it to
