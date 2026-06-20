@@ -182,12 +182,16 @@ Returns:
 
 ```json
 {
-  "slate": [ {"id","text","descriptor","coords","niche_id","novelty","fitness","embedding_ref"}, ... ],
+  "slate": [ {"id","text","descriptor","coords","niche_id","novelty","mechanism_novelty","fitness","embedding_ref"}, ... ],
   "ask_pairs": [ ["idA","idB","why this pair is worth asking"], ... ],
-  "monitor": {"collapsing": false, "mean_cosine": 0.18, "entropy": 2.1,
+  "ask_policy": {"generation": 0, "phase": "refine", "ask_sim_weight_effective": 0.5},
+  "monitor": {"collapsing": false, "too_similar": false, "calibrated": false,
+              "mean_cosine": 0.18, "cos_limit": 0.55, "baseline_n": 0, "entropy": 2.1,
               "normalized_entropy": 0.88, "coverage": 9, "n": 12, "reasons": [],
-              "submitted": 12, "target_candidates": 12, "under_generation": false},
+              "submitted": 12, "target_candidates": 12, "under_generation": false,
+              "variety_eroding": false, "variety_erosion": {"streak": 0, "...": "..."}},
   "parents": ["id", "..."],
+  "slate_mechanism_novelty": 0.57,
   "open_axis": {"present": true, "frozen": false, "partition": "cold_start",
                 "accumulated": 12, "freeze_threshold": 48, "progress": 0.25},
   "surface_mechanism_gap": {"n": 6, "surface_spread": 0.62, "mechanism_spread": 0.41,
@@ -197,6 +201,11 @@ Returns:
 
 `surface_mechanism_gap` is **present only when `engine.gap_probe: true`** is set in the
 resolved axes (default off ⇒ absent). It is advisory measurement — see §8.
+
+`ask_policy` (the explore/refine schedule behind `ask_pairs`) and `slate_mechanism_novelty`
+(the slate's mean mechanism-space novelty, paired with each item's `mechanism_novelty`) are
+**advisory/observability only** — no action required. `monitor.variety_eroding` *is*
+actionable; see §7.
 
 `submitted` / `target_candidates` / `under_generation` are the **prefilter guard**:
 the engine sees only the candidates you submitted, so if you prefiltered away so many
@@ -305,6 +314,15 @@ job in the prefilter is to drop the *invalid / off-brief / incoherent*. Next rou
 - generate the full `candidates_per_generation` and prefilter **less** — keep weird,
   risky, or off-beat ideas; they are the variety the geometry needs;
 - only the genuinely invalid should be cut, never the merely unusual.
+
+**Variety erosion (advisory, S2).** If `monitor.variety_eroding` is true, survivor
+novelty is decaying *faster over time* (the decay is accelerating) while your submitted
+count is healthy — the signature of a generator quietly **regressing to the mode** even
+though nothing has tripped `collapsing` yet. It is advisory (it never gates anything and
+`monitor.variety_erosion` carries the detail: `streak`, `slope_earlier`, `slope_recent`),
+but treat it as an early-warning version of collapse: next round, reach for unused
+operators and push *mechanism* variety (the open axis) harder before it becomes a full
+collapse. A single quiet generation is noise; a raised flag means it has persisted.
 
 Never remove, bypass, or "trust the judge instead of" the monitor. The
 anti-convergence machinery is the point of the tool.

@@ -138,6 +138,14 @@ def test_candidate_rejects_non_finite_fitness():
         Candidate.from_dict({"id": "c", "text": "t", "fitness": "inf"})
 
 
+@pytest.mark.parametrize("text", ["", "   ", "\t\n"])
+def test_candidate_rejects_empty_text(text):
+    # Empty/whitespace text embeds to a zero vector -> never dedups, always scores
+    # maximally novel; reject it like an empty id rather than silently poison both.
+    with pytest.raises(ConfigError):
+        Candidate.from_dict({"id": "c", "text": text})
+
+
 def test_axis_non_integer_bins_raises_configerror():
     with pytest.raises(ConfigError):
         axes_spec_from_dict(

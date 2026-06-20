@@ -111,6 +111,9 @@ def test_example_domain_engine_overrides():
         ({"engine": {"erosion_persist": 0}}, "erosion_persist"),
         ({"engine": {"gap_probe": "yes"}}, "gap_probe"),
         ({"engine": []}, "engine"),
+        # A misspelled knob is rejected, not silently ignored (would run defaults).
+        ({"engine": {"qualtiy_weight": 0.9}}, "unknown engine config key"),
+        ({"engine": {"open_niches": 8, "totally_bogus": 1}}, "totally_bogus"),
     ],
 )
 def test_malformed_engine_raises(bad, needle):

@@ -281,12 +281,14 @@ class State:
 
     def reset_geometry(self) -> None:
         """Delete this project's geometric state — the MAP-Elites archive, candidate
-        records, embeddings, and the frozen open-axis nicher — so the project can be
-        re-initialized under a NEW axes geometry without mixing stale niche keys with
-        new ones. Preference memory (pins/discards/comparisons, namespaced per domain)
-        is deliberately left intact. Best-effort: a missing file is not an error."""
+        records, embeddings (surface AND the parallel mechanism store), and the frozen
+        open-axis nicher — so the project can be re-initialized under a NEW axes
+        geometry without mixing stale niche keys with new ones. Preference memory
+        (pins/discards/comparisons, namespaced per domain) is deliberately left intact.
+        Best-effort: a missing file is not an error."""
         for path in (self.archive_path, self.candidates_path,
-                     self.embeddings_path, self.open_nicher_path):
+                     self.embeddings_path, self.mech_embeddings_path,
+                     self.open_nicher_path):
             with contextlib.suppress(OSError):
                 path.unlink(missing_ok=True)
 

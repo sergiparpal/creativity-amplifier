@@ -143,6 +143,10 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    distance from recent ideas) — never remove or bypass the monitor. If
    `monitor.under_generation` is true, you over-prefiltered: next round generate the
    full target and cut **only** invalid/off-brief ideas, never the merely unusual.
+   If `monitor.variety_eroding` is true (advisory early warning: survivor novelty is
+   decaying *faster over time* while submits stay healthy — a generator regressing to
+   the mode before `collapsing` trips), push unused operators and *mechanism* variety
+   next round. See `references/loop.md` §7.
 10. **Session-end gap summary (advisory; only when `gap_probe` is enabled).** If — and only
     if — this session's `ingest` output has carried a `surface_mechanism_gap` block (it
     appears only when `engine.gap_probe: true` is set in the resolved axes; by default it is

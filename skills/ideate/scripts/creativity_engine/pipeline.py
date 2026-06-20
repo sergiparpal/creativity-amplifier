@@ -80,8 +80,9 @@ def init_project(
     Re-initing an EXISTING project whose axes geometry changed would otherwise leave
     stale niche keys mixed with new ones (the archive is keyed by the old axes). When
     the incoming axes differ from the persisted snapshot and geometric state exists,
-    that state (archive / candidates / embeddings / frozen open-nicher) is reset and
-    the geometry-coupled meta series dropped; preference memory is preserved. Identical
+    that state (archive / candidates / embeddings / mechanism embeddings / frozen
+    open-nicher) is reset and the geometry-coupled meta series dropped; preference memory
+    is preserved. Identical
     axes -> idempotent, nothing reset. Runs under the project lock (see ``ingest``).
     """
     spec, settings, econfig = config.load_all(axes_source)
@@ -709,10 +710,24 @@ def _ingest_locked(
     state = sess.state
     # The axes passed in are authoritative for this cycle; snapshot them only on
     # a fresh project so an existing project keeps its original resolved axes.
-    fresh = state.read_axes() is None
+    prev_axes = state.read_axes()
+    fresh = prev_axes is None
     if fresh:
         sess.adopt_spec(spec)
     else:
+        # Geometry guard: niche keys are built from the axes list, so ingesting under
+        # axes that differ from the project's snapshot would silently mix incompatible
+        # niche keys into one archive (and metrics/parents read the snapshot, not these
+        # axes). init-project resets geometry on an axes change; ingest must not be the
+        # back door around that. Compare ONLY the axes list (what placement uses), not
+        # slate_size/domain/unit. Fail loudly so the operator re-inits to change axes.
+        if (isinstance(prev_axes, dict)
+                and prev_axes.get("axes") != [a.to_dict() for a in spec.axes]):
+            raise config.ConfigError(
+                f"axes geometry passed to ingest differs from project {project!r}'s "
+                f"snapshot; re-run init-project to change axes (it resets the geometry) "
+                f"or pass the project's original axes"
+            )
         # Engine config stays per-cycle overridable (state_prune_threshold, monitor
         # thresholds, ask weights …), but the open-axis NICHING knobs are pinned to
         # the init snapshot: open_niches / open_niche_freeze_factor set the CVT

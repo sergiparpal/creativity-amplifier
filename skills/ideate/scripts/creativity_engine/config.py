@@ -293,6 +293,17 @@ class EngineConfig:
             raise ConfigError(f"'engine' must be an object, got {type(eng).__name__}")
         base = cls()
 
+        # Reject unknown keys rather than silently ignoring them: a typo'd knob
+        # (e.g. 'qualtiy_weight') would otherwise be a no-op and the domain would
+        # quietly run on defaults. The valid set is exactly what ``to_dict`` emits.
+        known = set(base.to_dict())
+        unknown = sorted(k for k in eng if k not in known)
+        if unknown:
+            raise ConfigError(
+                f"unknown engine config key(s): {', '.join(unknown)}; "
+                f"valid keys are {', '.join(sorted(known))}"
+            )
+
         def pos_int(key: str, default: int) -> int:
             v = eng.get(key, default)
             try:
@@ -420,6 +431,11 @@ class Candidate:
         text = d.get("text", "")
         if not isinstance(text, str):
             raise ConfigError(f"candidate {cid!r} 'text' must be a string")
+        if not text.strip():
+            # Empty/whitespace text embeds to a zero vector, which never dedups
+            # (cosine 0 < tau) and always scores maximally novel — silently
+            # poisoning dedup and the novelty signal. Reject it like an empty id.
+            raise ConfigError(f"candidate {cid!r} 'text' must be a non-empty string")
         descriptor = d.get("descriptor", {}) or {}
         if not isinstance(descriptor, dict):
             raise ConfigError(f"candidate {cid!r} 'descriptor' must be an object")

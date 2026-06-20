@@ -9,7 +9,10 @@ memory. An identical re-init (or a settings-only change like slate_size) is a no
 
 from __future__ import annotations
 
+import pytest
+
 from creativity_engine import pipeline, selftest
+from creativity_engine.config import ConfigError
 from creativity_engine.state import State
 
 
@@ -58,6 +61,7 @@ def test_reinit_changed_axes_resets_geometry_keeps_memory(home):
     st = State("p", home=home)
     assert st.read_archive() == {}            # geometry wiped
     assert st.read_embeddings() == {}
+    assert st.read_mech_embeddings() == {}    # parallel mechanism store wiped too
     assert st.read_candidates() == {}
     assert st.read_open_nicher() is None
     assert "c0" in st.read_pins("d")          # preference memory preserved (same domain)
@@ -88,6 +92,20 @@ def test_post_reset_ingest_has_only_new_axis_keys(home):
     assert keys, "expected niches after the post-reset ingest"
     # No stale form=/mechanism= keys survive — every key is on the new axes.
     assert all(k.startswith("colour=") for k in keys)
+
+
+def test_ingest_rejects_divergent_axes(home):
+    # ingest is not a back door around init-project's geometry guard: passing axes
+    # whose geometry differs from the project's snapshot must fail loudly rather than
+    # silently mix incompatible niche keys into one archive.
+    axes = _axes()
+    pipeline.init_project("p", axes, seed=1, home=home)
+    pipeline.ingest("p", _cands(4), axes, seed=1, home=home)  # same axes: fine
+    divergent = _axes(open_name="approach", cat="colour")
+    with pytest.raises(ConfigError, match="differs from project"):
+        pipeline.ingest("p", _cands(4), divergent, seed=1, home=home)
+    # A settings-only change (slate_size) is NOT a geometry change -> still allowed.
+    pipeline.ingest("p", _cands(4), dict(axes, slate_size=2), seed=1, home=home)
 
 
 def test_reinit_empty_project_does_not_reset(home):
