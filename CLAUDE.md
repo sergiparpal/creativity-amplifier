@@ -151,9 +151,13 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   domain**; every command receives resolved axes. **Tuning knobs live in `EngineConfig`** (dedup τ,
   KNN k, open-niche count + freeze factor, DPP pool, novelty-ref cap, quality weight, monitor
   thresholds/margins/window), overridable per domain via an optional `engine:` block; defaults
-  reproduce the original behavior and `ingest` resolves them with `load_engine_config`. The
+  reproduce the original behavior and `ingest` resolves them with `load_engine_config`. An
+  **unknown key** in that block is a loud `ConfigError` (the valid set is exactly what
+  `EngineConfig.to_dict` emits), so a typo'd knob can never silently run on defaults. The
   pipeline/monitor module constants remain only as fallback defaults for direct callers and the
-  self-test (kept in sync with `EngineConfig` by `test_engine_config`).
+  self-test (kept in sync with `EngineConfig` by `test_engine_config`). `Candidate.from_dict`
+  also **rejects empty/whitespace `text`** (it would embed to a zero vector that never dedups and
+  always scores maximally novel — poisoning dedup and novelty), mirroring the empty-id guard.
 - `embed.py`, `novelty.py`, `diversity.py`, `monitor.py`, `archive.py` — the math (see below).
 - `originality.py` — advisory distance-to-cliché *measurement*, deliberately isolated from the math
   above: it is never imported by the selection geometry and only ever consumed as a reported number
@@ -286,7 +290,13 @@ must be re-embedded or pinned to `CREATIVITY_EMBEDDER=local`. Each family has it
 
 All embedders return **L2-normalized rows**, so cosine similarity is a plain dot product — this
 assumption is relied on throughout the math modules. `ingest` guards against mixing embedding
-dimensions within a project and fails loudly.
+dimensions within a project and fails loudly. It also **guards the axes geometry**: niche keys are
+built from the axes list, so `ingest` refuses an `--axes` whose axes differ from the project's
+persisted snapshot (it compares the axes list only — not `slate_size`/domain/unit) with a clean
+`ConfigError`, rather than silently mixing incompatible niche keys into one archive. To change axes
+you re-run `init-project`, which resets the geometry-coupled state (archive / candidates /
+embeddings / **mechanism embeddings** / frozen open-nicher) while preserving preference memory;
+`ingest` is deliberately not a back door around that guard.
 
 **Axes resolution** (per session, done by the agent in `SKILL.md`, validated by `config.py`): named
 domain config → inferred-and-confirmed axes → `config/domains/generic.yaml` fallback. Domain
@@ -297,7 +307,9 @@ about a domain is baked into the plugin or engine.
 `~/.creativity-amplifier/<project>/` (override the base with `CREATIVITY_AMPLIFIER_HOME`). Writes
 are atomic (temp file + `os.replace`). Per-project files are `meta.json` (project/session
 settings), `axes.json` (the resolved axes geometry — kept separate from settings so the engine's
-`AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, and `open_nicher.json`
+`AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, `mech_embeddings.json`
+(the parallel mechanism/open-axis embedding store backing S4 — see Mechanism-space novelty), and
+`open_nicher.json`
 (the frozen CVT centroids, written once the open-axis partition freezes — see Niching). Preference memory
 (`comparisons.jsonl`, `pins.json`, `discards.json`) lives in a per-domain sub-directory,
 **namespaced per domain** so switching domains keeps preferences separate. `discards.json` is the
