@@ -32,6 +32,15 @@ the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
   It **hedges** cliché rather than guaranteeing world-novelty, and it is
   **measurement only**: the cliché signal never feeds the selection geometry, so
   it can't prune variety.
+- **Mechanism-first generation, novelty measured where it counts.** Because the
+  engine niches ideas on their *mechanism* (the open "how it works" axis), Claude
+  commits to a **distinct mechanism before writing each surface idea** — so variety
+  is pursued in approach-space, not just wording. To keep that honest, the engine
+  also reports **novelty in mechanism space** (the same k-NN novelty, computed on
+  each idea's mechanism embedding against the session's accumulated mechanisms)
+  alongside the surface novelty — and an opt-in **surface/mechanism gap** probe that
+  flags when wording diversity *overstates* approach diversity. Both are **advisory
+  measurement only**, never wired into selection.
 - **An anti-collapse monitor that's never bypassed.** Shannon entropy over niche
   occupancy + mean pairwise cosine flag convergence; the similarity signal is
   **calibrated to a rolling baseline** (and the dedup threshold is per-embedder),
@@ -197,8 +206,10 @@ above; this is the same loop with the internals. The skill follows
    it falls back to `config/domains/generic.yaml`.
 2. **Generate (agent).** Claude first maps the brief's ~6 most obvious answers,
    then applies several variation operators (`references/operators.md`) to draft
-   candidates that deliberately steer *away* from those clichés, each with a
-   descriptor on the resolved axes and genealogy.
+   candidates that deliberately steer *away* from those clichés. Generation is
+   **mechanism-first**: Claude commits to a distinct `mechanism` (the open novelty
+   axis the engine niches on) *before* writing each surface idea. Every candidate
+   carries a descriptor on the resolved axes and genealogy.
 3. **Prefilter (agent).** Claude applies `references/judge_rubric.md` to drop only
    invalid / off-brief candidates — never to cut variety.
 4. **Ingest (engine).** Survivors are embedded, deduped, placed into MAP-Elites
@@ -208,7 +219,11 @@ above; this is the same loop with the internals. The skill follows
    and a **DPP** picks a quality-weighted diverse slate (geometry dominates; the
    judge's bounded fitness only nudges ordering). The **anti-collapse monitor** runs,
    plus the two **advisory** sensors (prefilter guard + variety erosion) that ask the
-   skill to widen the search without ever influencing selection.
+   skill to widen the search without ever influencing selection. Two more **advisory
+   measurements** ride along: **mechanism-space novelty** (the surface k-NN novelty,
+   recomputed on the mechanism axis) and an opt-in **surface/mechanism gap** probe
+   (`engine.gap_probe`, default off) that quantifies whether wording diversity
+   overstates approach diversity — both reported, never wired into selection.
 5. **Select (you).** Claude shows the slate with each idea's niche coordinates,
    asks only the most-informative A-vs-B pairs, and **explicitly invites you to pin
    any idea — not just the ones it asked about**. A pin is the strong, durable
@@ -249,8 +264,8 @@ inferred-or-generic axes. See `references/axis_inference.md` for how inference
 works. A template may also carry an optional `engine:` block to override tuning
 knobs (open-niche count, dedup τ, quality weight, monitor thresholds,
 variety-erosion window/persistence, ask-pair policy & `explore_until_generation`
-schedule, …) per domain — defaults reproduce the standard behavior; see
-`_schema.md` for the keys.
+schedule, the opt-in `gap_probe`, …) per domain — defaults reproduce the standard
+behavior; see `_schema.md` for the keys.
 
 ## The engine CLI (for the curious / for tests)
 
@@ -266,7 +281,7 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 | `ingest` | embed → dedup → place → novelty → archive → DPP → monitor |
 | `remember` | append a comparison/pin/discard to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept, discards excluded) |
-| `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
+| `metrics` | archive health (entropy, mean cosine, coverage, n) + mechanism spread + open-axis freeze progress |
 | `selftest` | full loop with a stubbed LLM + human; variety gate + collapse reversal |
 
 Runtime state is written **outside** the plugin (so reinstalls don't wipe it):
