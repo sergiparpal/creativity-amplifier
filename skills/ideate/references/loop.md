@@ -182,7 +182,7 @@ Returns:
 
 ```json
 {
-  "slate": [ {"id","text","descriptor","coords","niche_id","novelty","mechanism_novelty","fitness","embedding_ref"}, ... ],
+  "slate": [ {"id","text","descriptor","genealogy","coords","niche_id","novelty","mechanism_novelty","fitness","embedding_ref"}, ... ],
   "ask_pairs": [ ["idA","idB","why this pair is worth asking"], ... ],
   "ask_policy": {"generation": 0, "phase": "refine", "ask_sim_weight_effective": 0.5},
   "monitor": {"collapsing": false, "too_similar": false, "calibrated": false,
@@ -242,8 +242,9 @@ were not in the asked pairs**, e.g.:
 > Want me to pin any of these as a stepping stone? Any of them — not just A/B.
 
 Pinning is deliberately *not* limited to the asked pairs, and it is the user's main
-lever. The `ask_pairs` only refine a **low-weight** preference signal (`fitness`,
-clipped and weighted so it can never prune variety or pick the slate); a **pin** is
+lever. The `ask_pairs` only feed a **low-weight** preference signal — recorded in
+memory and recalled into the next round, never able to prune variety or pick the
+slate; a **pin** is
 the strong, durable signal — it is always kept as a parent for the next generation
 (step 6, `select_parents` never drops a pin) and recalled across sessions. So when
 the user likes a slate idea you didn't ask about, prompt them to pin it instead of

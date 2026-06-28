@@ -22,7 +22,7 @@ unit_of_generation: <string>     # idea | concept | hypothesis | name | feature 
 axes:                            # 4-6 axes recommended
   - name: <string>               # unique within the spec
     type: <categorical | continuous | open>
-    range: [<lo>, <hi>]          # REQUIRED for continuous; ignored otherwise
+    range: [<lo>, <hi>]          # REQUIRED for continuous; on other types validated but unused
     primary_novelty: <bool>      # at most ONE axis; the main novelty carrier
     bins: <int>                  # optional, continuous only (default 5)
 judge_rubric: references/judge_rubric.md   # which rubric the agent prefilters with
@@ -75,8 +75,8 @@ the natural scale of similarity.
 | `continuous` | a number in `range` (edginess, boldness…) | `range` split into `bins` cells |
 | `open` | a free-text "how" / mechanism / approach | data-adaptive Voronoi cells over embeddings (fit-once-then-freeze k-means; deterministic cold start) |
 
-Mark exactly one axis — usually an `open` one — with `primary_novelty: true`. It
-is the main carrier of novelty and is niched geometrically over embeddings, so
+Mark at most one axis — usually an `open` one — with `primary_novelty: true`
+(recommended: exactly one). It is the main carrier of novelty and is niched geometrically over embeddings, so
 the engine can keep one elite per *kind of approach* rather than per surface
 label.
 

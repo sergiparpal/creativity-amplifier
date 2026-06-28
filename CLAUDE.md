@@ -140,7 +140,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 | `remember` | append a comparison/pin/discard to preference memory |
 | `parents` | diverse parents for the next generation (pins always kept) |
 | `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress |
-| `selftest` | full loop with stubbed LLM + human; value gate + collapse reversal + advisory originality probe |
+| `selftest` | full loop with stubbed LLM + human; variety gate + collapse reversal + advisory originality probe |
 
 ## Architecture
 
@@ -167,7 +167,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
   (`select_ask_pairs`) scores candidate A-vs-B questions by a weighted sum of embedding
   **similarity**, fitness **uncertainty**, and **novelty**. The default weights favor *similar*
   pairs — the judge-disagreement boundary, best for **learning the preference function** — but that
-  is a deliberate policy, not a proven optimum (the value-gate does not test it). The two competing
+  is a deliberate policy, not a proven optimum (the variety gate does not test it). The two competing
   readings (learn-preference vs. **explore** by comparing region-separating pairs) are reconciled by
   making the weights tunable: `engine.ask_sim_weight ≤ 0` flips the policy to explore. Defaults
   reproduce the original behavior. `engine.explore_until_generation` (S3) **schedules** that policy
@@ -321,9 +321,11 @@ cycle; for long sessions `ingest` **prunes** records nothing reads again once th
 `engine.state_prune_threshold` (default 2000, 0 disables) — keeping exactly archive elites, pins, and
 comparison ids, so the pruning is output-neutral.
 
-**The self-test is the correctness contract** (`selftest.py`). It enforces a **value gate** — the
-engine's diverse slate must beat a single-shot baseline on mean pairwise distance, Vendi score, and
-niche entropy, and DPP must beat naive first-N on the *same* pool — plus an **induced-collapse
+**The self-test is the correctness contract** (`selftest.py`). It enforces a **variety gate**
+(renamed from "value gate": it proves *variety geometry* plus one narrow within-niche value
+assertion, not value in general) — the engine's diverse slate must beat a single-shot baseline on
+mean pairwise distance, Vendi score, and niche entropy, and DPP must beat naive first-N on the
+*same* pool — plus an **induced-collapse
 reversal** (a samey generation trips the monitor; the next generation recovers once diversity
 pressure rises). It also runs an **advisory originality probe** (`_originality_probe`): it scores the
 diverse slate's distance to a **held-out** half (`O_test`) of a clichéd obvious-set — held out so the

@@ -40,10 +40,13 @@ cliché per above.
 ## Optional within-niche fitness
 
 You may attach `fitness` ∈ [0, 1] to a kept candidate: how well-executed and
-on-brief it is *as an instance of its kind*. The engine uses it only to choose the
-elite **within** a niche — never to compare across niches or to cut variety.
-Default to `1.0` when you have no strong signal; reserve low scores for "valid but
-sloppy/half-formed". Do **not** score novelty here.
+on-brief it is *as an instance of its kind*. The engine uses it to choose the
+elite **within** a niche, and as a **bounded, low-weight** nudge to the DPP slate
+(affine-rescaled, clipped to a [0.7, 1.3] multiplier, blended at weight 0.3) — so
+it can sharpen ordering but can **never** prune variety, collapse the slate's
+diversity, or pick the final slate. Default to `1.0` when you have no strong
+signal; reserve low scores for "valid but sloppy/half-formed". Do **not** score
+novelty here.
 
 ## Pairwise mode (optional)
 

@@ -116,8 +116,9 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    "Want me to pin any of these to keep exploring from? — any of them, not just A/B").
    Pinning is the user's strongest, most durable preference signal: pins are always
    kept as parents for the next generation and recalled across sessions, whereas the
-   A-vs-B pairs only refine a **low-weight** `fitness` signal that can never prune
-   variety. So if the user's favorite is an idea you didn't ask about, prompt them to
+   A-vs-B answers only feed a **low-weight** preference signal (recorded in memory,
+   recalled into the next round) that can never prune variety or pick the slate. So
+   if the user's favorite is an idea you didn't ask about, prompt them to
    pin it rather than let it pass unrecorded. Then also **offer the negative lever —
    the user may discard any ideas they don't want carried forward** (e.g. "Want me to
    drop any of these so we stop building on them?"). A discard is the symmetric
