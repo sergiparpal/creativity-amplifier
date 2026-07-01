@@ -1,4 +1,6 @@
-# Creativity Amplifier
+# Cambrian
+
+![cambrian-explosion.jpg](images/cambrian-explosion.jpg)
 
 A **domain-agnostic** Claude Code plugin that turns a creative brief in *any*
 subject into a **diverse, non-cliché slate** of ideas, using a blind-variation →
