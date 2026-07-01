@@ -69,8 +69,7 @@ In Claude Code, add this repo as a plugin marketplace and install the plugin:
 /plugin install cambrian@sergiparpal
 ```
 
-**Updating to the latest version:** if you don't have the latest version of the plugin
-installed, update it by running:
+**Updating:** grab the latest version anytime with:
 
 ```
 claude plugin update cambrian@sergiparpal
@@ -81,7 +80,7 @@ plugin **provisions its own Python engine in the background**: it builds a virtu
 and installs the default stack (numpy, scikit-learn, and the multilingual
 `model2vec` embedder, `minishlab/potion-multilingual-128M`). The embedder weights are
 **~120 MB** and need **only numpy at inference — no PyTorch**, so the first-run download
-is small and fast; it runs **non-blocking**, so Claude Code stays usable the whole time.
+is small and fast, and the whole build runs **non-blocking** — Claude Code stays usable throughout.
 The venv is stored in the plugin's persistent data directory, so it **survives plugin
 updates**.
 
@@ -96,9 +95,9 @@ Then invoke the skill with a brief in ANY subject:
 /cambrian:ideate research hypotheses for why week-2 retention dropped
 ```
 
-If you run `/ideate` before the one-time setup has finished, the skill tells you it's
-**setting up the engine** and continues automatically once it's ready — you never have
-to run a setup step yourself. (If Python 3.11+ isn't found, it says so with a fix.)
+If you run `/cambrian:ideate` before that one-time setup finishes, the skill says it's
+**setting up the engine** and continues on its own once it's ready — you never run a
+setup step yourself. (If Python 3.11+ isn't found, it says so, with a fix.)
 
 ## What happens when you run it
 
