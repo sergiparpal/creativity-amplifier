@@ -8,7 +8,7 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/provision.mjs\"",
             "async": true,
             "timeout": 600,
-            "statusMessage": "Provisioning the creativity engine (one-time)…"
+            "statusMessage": "Provisioning the Cambrian engine (one-time)…"
           }
         ]
       }

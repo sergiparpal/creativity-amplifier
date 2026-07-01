@@ -1,4 +1,4 @@
-# Opt-in high-fidelity embedder (CREATIVITY_EMBEDDER=local).
+# Opt-in high-fidelity embedder (CAMBRIAN_EMBEDDER=local).
 #
 # BAAI/bge-small-en-v1.5 is English-only and pulls in the torch stack (~2 GB),
 # which is why it is NOT part of the default install (requirements.txt ships the
@@ -6,7 +6,7 @@
 # explicitly want the higher-fidelity English geometry:
 #
 #   pip install -r requirements.txt -r requirements-local.txt
-#   export CREATIVITY_EMBEDDER=local
+#   export CAMBRIAN_EMBEDDER=local
 #
 # Note: 'local' is 384-dim vs. the default 'static' 256-dim, so a project must be
 # created under whichever embedder it will be ingested with — they cannot mix.

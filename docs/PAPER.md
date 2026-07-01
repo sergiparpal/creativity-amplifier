@@ -1,7 +1,7 @@
 # A reference architecture for amplifying human creativity: variation by an LLM agent, geometric diversity, and human selection
 
 **Sergi Parpal**
-Code: <https://github.com/sergiparpal/creativity-amplifier> · License: MIT
+Code: <https://github.com/sergiparpal/Cambrian> · License: MIT
 
 ---
 
@@ -246,7 +246,7 @@ Four directions follow from the limitations, ordered from lower to higher risk.
 
 ## 11. Conclusion
 
-We have described a creativity amplifier for the case where the value of an idea is subjective, organized around a strict division of responsibilities: geometry owns novelty; the LLM agent owns only validity and within-niche ranking; the human owns value, spent with precision. That split —reinforced by an embedding lineage foreign to the generator's, a Quality-Diversity archive, DPP selection, and an anti-collapse monitor that is never bypassed— turns the defense against collapse toward the typical into a structural property of the loop, not a good intention. The executable `selftest` shows that the diverse slate beats a single shot and, more importantly, that geometric selection beats first-N over the same *pool*. The system does not solve the underlying problem of tacit value: it relocates it to where it has to live for now, in a human with something at stake, but used surgically rather than blindly.
+We have described an architecture for the case where the value of an idea is subjective, organized around a strict division of responsibilities: geometry owns novelty; the LLM agent owns only validity and within-niche ranking; the human owns value, spent with precision. That split —reinforced by an embedding lineage foreign to the generator's, a Quality-Diversity archive, DPP selection, and an anti-collapse monitor that is never bypassed— turns the defense against collapse toward the typical into a structural property of the loop, not a good intention. The executable `selftest` shows that the diverse slate beats a single shot and, more importantly, that geometric selection beats first-N over the same *pool*. The system does not solve the underlying problem of tacit value: it relocates it to where it has to live for now, in a human with something at stake, but used surgically rather than blindly.
 
 ---
 
@@ -299,7 +299,7 @@ We have described a creativity amplifier for the case where the value of an idea
 | `metrics` | archive health (entropy, mean cosine, coverage, n) + open-axis freeze progress + archive mechanism spread + (advisory) gap log |
 | `selftest` | full loop with a stubbed LLM and human; variety gate + collapse reversal + advisory originality probe |
 
-State is written **outside** the plugin (`~/.creativity-amplifier/<project>/`), with atomic writes and per-domain namespaced preferences (comparisons, pins, and discards), so reinstalling does not erase it. Changing a project's axes is not a back door: `ingest` refuses an `--axes` whose axes differ from the persisted snapshot (niche keys are built from the axes), so to change them you re-run `init-project`, which resets the geometry-coupled state —archive, candidates, embeddings, the parallel mechanism embeddings, and the frozen open-nicher— while preserving preference memory.
+State is written **outside** the plugin (`~/.cambrian/<project>/`), with atomic writes and per-domain namespaced preferences (comparisons, pins, and discards), so reinstalling does not erase it. Changing a project's axes is not a back door: `ingest` refuses an `--axes` whose axes differ from the persisted snapshot (niche keys are built from the axes), so to change them you re-run `init-project`, which resets the geometry-coupled state —archive, candidates, embeddings, the parallel mechanism embeddings, and the frozen open-nicher— while preserving preference memory.
 
 ## Appendix B — Default knobs and thresholds
 

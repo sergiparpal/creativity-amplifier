@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Claude Code **plugin** named `creativity-amplifier`. It ships **one model-invoked skill**
-(`skills/ideate/`, invoked as `/creativity-amplifier:ideate <brief>`) plus a bundled, server-less
-**Python "creativity engine"** (`skills/ideate/scripts/creativity_engine/`, a CLI) that owns the
+A Claude Code **plugin** named `cambrian`. It ships **one model-invoked skill**
+(`skills/ideate/`, invoked as `/cambrian:ideate <brief>`) plus a bundled, server-less
+**Python "Cambrian engine"** (`skills/ideate/scripts/cambrian_engine/`, a CLI) that owns the
 anti-convergence math.
 
 The work is split across two halves that meet at a JSON contract:
@@ -71,8 +71,8 @@ intended semantics.)
 
 Two install paths, one provisioner (`skills/ideate/scripts/bootstrap.py`):
 
-- **End users (marketplace):** `/plugin marketplace add sergiparpal/creativity-amplifier`
-  then `/plugin install creativity-amplifier@sergiparpal`. A `SessionStart` hook
+- **End users (marketplace):** `/plugin marketplace add sergiparpal/Cambrian`
+  then `/plugin install cambrian@sergiparpal`. A `SessionStart` hook
   (`hooks/hooks.json`, `async: true`) runs a thin Node dispatcher (`hooks/provision.mjs`)
   that hands off to `bootstrap.py` in a detached background process right after load —
   non-blocking, idempotent, concurrency-safe. The venv is
@@ -115,20 +115,20 @@ skills/ideate/.venv/bin/python -m pytest tests/test_diversity_monitor.py -q
 skills/ideate/.venv/bin/python -m pytest -k "dpp" -q
 
 # Offline end-to-end self-test (the correctness contract; exits 0 on pass)
-skills/ideate/.venv/bin/python -m creativity_engine selftest
+skills/ideate/.venv/bin/python -m cambrian_engine selftest
 # ...with the live embedder instead of the hash one:
-skills/ideate/.venv/bin/python -m creativity_engine selftest --live
+skills/ideate/.venv/bin/python -m cambrian_engine selftest --live
 
 # Load the plugin in Claude Code without installing it, then validate it
 claude --plugin-dir .
 claude plugin validate .            # or: claude plugin validate --strict .
 ```
 
-Set `CREATIVITY_DEBUG=1` to get a full traceback from the CLI instead of the clean one-line error.
+Set `CAMBRIAN_DEBUG=1` to get a full traceback from the CLI instead of the clean one-line error.
 
 ## Engine CLI
 
-`python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed N]` — every command
+`python -m cambrian_engine <command> --project <id> [--axes axes.json] [--seed N]` — every command
 reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 
 | Command | Does |
@@ -144,7 +144,7 @@ reads/writes JSON, prints JSON to stdout, errors to stderr with a non-zero exit.
 
 ## Architecture
 
-**Module layering** (`skills/ideate/scripts/creativity_engine/`), lowest to highest:
+**Module layering** (`skills/ideate/scripts/cambrian_engine/`), lowest to highest:
 
 - `config.py` — foundation. Dataclasses (`Axis`, `AxesSpec`, `Candidate`, `Niche`,
   `SessionSettings`, `EngineConfig`) and axes loading/validation. The engine **never assumes a
@@ -275,7 +275,7 @@ entirely on the cold-start partition (validated good under the real embedder), s
 surface an **`open_axis`** progress block (`accumulated` / `freeze_threshold` / `progress` / `frozen`)
 to make the otherwise-silent freeze observable.
 
-**Embedders** (`embed.py`), selected by `CREATIVITY_EMBEDDER` (`static` default):
+**Embedders** (`embed.py`), selected by `CAMBRIAN_EMBEDDER` (`static` default):
 - `static` — model2vec `minishlab/potion-multilingual-128M`, **256-dim, 101 languages**, CPU,
   **numpy-only inference (no torch)**, ~120 MB, lazily downloaded. The default for real runs.
 - `local` — sentence-transformers `BAAI/bge-small-en-v1.5`, **384-dim, English-only**, CPU, pulls
@@ -285,7 +285,7 @@ to make the otherwise-silent freeze observable.
 
 Switching the default from `local` (384-dim) to `static` (256-dim) is **breaking for projects
 persisted under the old default**: `_guard_embedding_dim` refuses to mix widths, so an old project
-must be re-embedded or pinned to `CREATIVITY_EMBEDDER=local`. Each family has its own dedup τ in
+must be re-embedded or pinned to `CAMBRIAN_EMBEDDER=local`. Each family has its own dedup τ in
 `DEDUP_TAU_BY_EMBEDDER` (`static: 0.93`, calibrated on an EN+ES near-dup/distinct sample).
 
 All embedders return **L2-normalized rows**, so cosine similarity is a plain dot product — this
@@ -304,7 +304,7 @@ templates live in `config/domains/examples/*.yaml`; `_schema.md` documents the f
 about a domain is baked into the plugin or engine.
 
 **State** (`state.py`) is written **outside the plugin** so reinstalls don't wipe it:
-`~/.creativity-amplifier/<project>/` (override the base with `CREATIVITY_AMPLIFIER_HOME`). Writes
+`~/.cambrian/<project>/` (override the base with `CAMBRIAN_HOME`). Writes
 are atomic (temp file + `os.replace`). Per-project files are `meta.json` (project/session
 settings), `axes.json` (the resolved axes geometry — kept separate from settings so the engine's
 `AxesSpec` stays pure), `archive.json`, `candidates.json`, `embeddings.json`, `mech_embeddings.json`
@@ -343,8 +343,8 @@ measure stays non-circular — and reports it as a printed-only sanity number th
   major, so an auto-provisioned install never silently adopts a breaking major; bump caps
   deliberately. `setup.sh` just execs `bootstrap.py`, which resolves runtime-vs-dev and runs
   `pip install -r <reqs>` then `pip install -e . --no-deps`.
-- Tests are hermetic via `tests/conftest.py` (forces `CREATIVITY_EMBEDDER=hash` and an isolated
-  `CREATIVITY_AMPLIFIER_HOME`). Keep new tests offline — never trigger a model download.
+- Tests are hermetic via `tests/conftest.py` (forces `CAMBRIAN_EMBEDDER=hash` and an isolated
+  `CAMBRIAN_HOME`). Keep new tests offline — never trigger a model download.
 - Determinism matters: niching/DPP/CVT take a `--seed`; reuse it across a session's cycles.
 - `config.ConfigError` messages are user-facing (printed by the CLI) — write them for the operator.
 - `docs/PAPER.md` is the reference-architecture paper (rationale and positioning), not the

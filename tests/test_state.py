@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from creativity_engine.state import State, base_dir
+from cambrian_engine.state import State, base_dir
 
 
 def test_base_dir_respects_env(home):

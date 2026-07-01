@@ -1,4 +1,4 @@
-"""Creativity Amplifier engine.
+"""Cambrian engine.
 
 Deterministic, domain-agnostic diversity engine that owns the anti-convergence
 math for the `ideate` skill: embeddings, MAP-Elites archive, geometric novelty,

@@ -8,9 +8,9 @@ import json
 import pytest
 import yaml
 
-from creativity_engine import config
-from creativity_engine.__main__ import main
-from creativity_engine.config import (
+from cambrian_engine import config
+from cambrian_engine.__main__ import main
+from cambrian_engine.config import (
     AxesSpec,
     ConfigError,
     SessionSettings,

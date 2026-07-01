@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from creativity_engine import pipeline, selftest
-from creativity_engine.config import ConfigError
-from creativity_engine.state import State
+from cambrian_engine import pipeline, selftest
+from cambrian_engine.config import ConfigError
+from cambrian_engine.state import State
 
 
 def _axes(open_name="mechanism", cat="form"):

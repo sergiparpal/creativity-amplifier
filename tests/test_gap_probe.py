@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from creativity_engine import config, gap, pipeline, selftest
-from creativity_engine.state import State
+from cambrian_engine import config, gap, pipeline, selftest
+from cambrian_engine.state import State
 
 
 def _unit(rows):

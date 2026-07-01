@@ -10,7 +10,7 @@ __pycache__/
 # engine bootstrap runtime artifacts (normally in ${CLAUDE_PLUGIN_DATA}; here only if
 # a dev runs bootstrap.py --background from the source tree)
 provision.log
-.cae-provision.lock/
+.cambrian-provision.lock/
 engine-python.txt
 install.stamp
 .covtools/

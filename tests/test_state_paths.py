@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from creativity_engine.state import State, _path_slug
+from cambrian_engine.state import State, _path_slug
 
 
 def test_clean_ascii_ids_round_trip_unchanged():

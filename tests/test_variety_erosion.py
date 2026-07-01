@@ -10,8 +10,8 @@ Two halves:
 
 from __future__ import annotations
 
-from creativity_engine import config, monitor, pipeline, selftest
-from creativity_engine.state import State
+from cambrian_engine import config, monitor, pipeline, selftest
+from cambrian_engine.state import State
 
 W, RHO, K = 5, 0.5, 2  # the fixed defaults
 

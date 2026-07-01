@@ -1,8 +1,8 @@
 """File-based local state for a project.
 
 State is written **outside** the plugin so reinstalls don't wipe it. The base
-directory is ``~/.creativity-amplifier`` by default, overridable with the
-``CREATIVITY_AMPLIFIER_HOME`` environment variable (used by the test suite to
+directory is ``~/.cambrian`` by default, overridable with the
+``CAMBRIAN_HOME`` environment variable (used by the test suite to
 isolate runs). Layout::
 
     <home>/<project>/
@@ -38,8 +38,8 @@ from .config import ConfigError
 
 _log = logging.getLogger(__name__)
 
-DEFAULT_HOME_ENV = "CREATIVITY_AMPLIFIER_HOME"
-_DEFAULT_BASE = "~/.creativity-amplifier"
+DEFAULT_HOME_ENV = "CAMBRIAN_HOME"
+_DEFAULT_BASE = "~/.cambrian"
 
 _PATH_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 

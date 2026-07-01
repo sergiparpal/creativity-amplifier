@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from creativity_engine import diversity
+from cambrian_engine import diversity
 
 
 def test_rank_deficient_pool_returns_full_slate_covering_directions():

@@ -196,7 +196,7 @@ def select_diverse(
     except (np.linalg.LinAlgError, ValueError, FloatingPointError):
         # Expected ways the kernel can degenerate (singular/ill-conditioned,
         # ragged input). Fall back to farthest-point, but re-raise under
-        # CREATIVITY_DEBUG so a genuine bug isn't masked by the fallback.
+        # CAMBRIAN_DEBUG so a genuine bug isn't masked by the fallback.
         if debug_enabled():
             raise
         return farthest_point_sampling(vecs, k)

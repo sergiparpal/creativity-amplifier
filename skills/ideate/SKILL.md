@@ -12,7 +12,7 @@ description: >
 allowed-tools: Bash, Read, Write
 ---
 
-# Creativity Amplifier — ideate
+# Cambrian — ideate
 
 Brief: $ARGUMENTS
 
@@ -26,7 +26,7 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
 
 1. **Locate the engine interpreter.** The venv auto-provisions in the background when
    the plugin loads, so it is usually ready already. Read the interpreter pointer from
-   the **first** of these that exists, and set `ENGINE = "<PYBIN>" -m creativity_engine`
+   the **first** of these that exists, and set `ENGINE = "<PYBIN>" -m cambrian_engine`
    (quote `<PYBIN>` — Windows paths may contain spaces):
    - `${CLAUDE_PLUGIN_DATA}/venv/engine-python.txt`  (marketplace install)
    - `${CLAUDE_SKILL_DIR}/.venv/engine-python.txt`   (dev `--plugin-dir` / `setup.sh`)
@@ -35,7 +35,7 @@ Follow `${CLAUDE_SKILL_DIR}/references/loop.md` exactly. Summary of one session:
    don't re-run blind — it sits next to the venv:
    `tail -n 40 "${CLAUDE_PLUGIN_DATA}/provision.log"` (marketplace) or
    `tail -n 40 "${CLAUDE_SKILL_DIR}/provision.log"` (dev); relay any real failure it
-   shows. Then tell the user **once**: "⏳ Setting up the creativity engine — a one-time
+   shows. Then tell the user **once**: "⏳ Setting up the Cambrian engine — a one-time
    download of ML libraries and a small embedding model. This can take a few minutes;
    I'll continue automatically when it's ready." Then run the bootstrap in the
    foreground (idempotent; it waits for any in-progress background provision):

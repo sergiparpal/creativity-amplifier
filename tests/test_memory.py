@@ -8,9 +8,9 @@ import json
 import numpy as np
 import pytest
 
-from creativity_engine import memory
-from creativity_engine.__main__ import main
-from creativity_engine.state import State
+from cambrian_engine import memory
+from cambrian_engine.__main__ import main
+from cambrian_engine.state import State
 
 
 def _unit(v):

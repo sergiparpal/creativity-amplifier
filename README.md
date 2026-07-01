@@ -6,7 +6,7 @@ A **domain-agnostic** Claude Code plugin that turns a creative brief in *any*
 subject into a **diverse, non-cliché slate** of ideas, using a blind-variation →
 diverse-archive → human-selection loop with you (the user) as the selector.
 
-It ships as **one model-invoked skill** (`/creativity-amplifier:ideate`) plus a
+It ships as **one model-invoked skill** (`/cambrian:ideate`) plus a
 bundled, server-less **Python engine** that owns the anti-convergence math. The
 LLM parts — generating variations and the skeptical judge prefilter — are done by
 the agent (Claude) itself, so **no extra chat-LLM API key is needed**.
@@ -65,15 +65,15 @@ Requirements: Claude Code (latest), Python 3.11+ on your PATH. Works the same in
 In Claude Code, add this repo as a plugin marketplace and install the plugin:
 
 ```
-/plugin marketplace add sergiparpal/creativity-amplifier
-/plugin install creativity-amplifier@sergiparpal
+/plugin marketplace add sergiparpal/Cambrian
+/plugin install cambrian@sergiparpal
 ```
 
 **Updating to the latest version:** if you don't have the latest version of the plugin
 installed, update it by running:
 
 ```
-claude plugin update creativity-amplifier@sergiparpal
+claude plugin update cambrian@sergiparpal
 ```
 
 That's it — no clone, no `setup.sh`, no `--plugin-dir`. On the next session start, the
@@ -92,8 +92,8 @@ beyond that venv.
 Then invoke the skill with a brief in ANY subject:
 
 ```
-/creativity-amplifier:ideate names for a privacy-first calendar app
-/creativity-amplifier:ideate research hypotheses for why week-2 retention dropped
+/cambrian:ideate names for a privacy-first calendar app
+/cambrian:ideate research hypotheses for why week-2 retention dropped
 ```
 
 If you run `/ideate` before the one-time setup has finished, the skill tells you it's
@@ -106,7 +106,7 @@ You don't need any of the math below to use the plugin — a session is just a
 back-and-forth chat, and **you are the one choosing the ideas**. Here is what each
 step looks like and what you do.
 
-1. **You give a brief.** Run `/creativity-amplifier:ideate <your brief>` for whatever
+1. **You give a brief.** Run `/cambrian:ideate <your brief>` for whatever
    you want ideas about — product names, campaign angles, plot twists, research
    hypotheses, anything. That's the only command you have to remember.
 2. **Claude confirms the "angles" — one quick question.** Before generating, Claude
@@ -156,7 +156,7 @@ python3 skills/ideate/scripts/bootstrap.py     # Windows: python ... or py ...
 claude --plugin-dir .
 
 # 3. Invoke the skill
-/creativity-amplifier:ideate names for a privacy-first calendar app
+/cambrian:ideate names for a privacy-first calendar app
 ```
 
 In this mode the venv lives at `skills/ideate/.venv/` and the engine is installed
@@ -172,10 +172,10 @@ claude plugin validate .          # or: claude plugin validate --strict .
 By default the engine uses the **static** `model2vec` embedder
 (`minishlab/potion-multilingual-128M`) — no API key, CPU-only, **multilingual**,
 torch-free (~120 MB), downloaded once on first use. Select a different provider with
-the `CREATIVITY_EMBEDDER` environment variable before launching Claude Code:
+the `CAMBRIAN_EMBEDDER` environment variable before launching Claude Code:
 
 ```bash
-export CREATIVITY_EMBEDDER=local   # static | local | hash | api
+export CAMBRIAN_EMBEDDER=local   # static | local | hash | api
 ```
 
 - **`static`** (default) — `potion-multilingual-128M`, 256-dim, 101 languages,
@@ -193,7 +193,7 @@ export CREATIVITY_EMBEDDER=local   # static | local | hash | api
 > `local` is 384-dim; the engine refuses to mix embedding widths within one project. A
 > project created/persisted under one embedder can't be re-ingested under another —
 > start a **new** project, or pin the original embedder (e.g.
-> `export CREATIVITY_EMBEDDER=local`) and re-embed if you must switch.
+> `export CAMBRIAN_EMBEDDER=local`) and re-embed if you must switch.
 
 ## How a session works (under the hood)
 
@@ -272,7 +272,7 @@ behavior; see `_schema.md` for the keys.
 ## The engine CLI (for the curious / for tests)
 
 ```
-python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed N]
+python -m cambrian_engine <command> --project <id> [--axes axes.json] [--seed N]
 ```
 
 | Command | Does |
@@ -287,14 +287,14 @@ python -m creativity_engine <command> --project <id> [--axes axes.json] [--seed 
 | `selftest` | full loop with a stubbed LLM + human; variety gate + collapse reversal |
 
 Runtime state is written **outside** the plugin (so reinstalls don't wipe it):
-`~/.creativity-amplifier/<project>/...`, preferences namespaced per domain.
-Override the base directory with `CREATIVITY_AMPLIFIER_HOME`.
+`~/.cambrian/<project>/...`, preferences namespaced per domain.
+Override the base directory with `CAMBRIAN_HOME`.
 
 ## Running the self-test & the suite
 
 ```bash
 # offline end-to-end check (stubbed LLM + human, no model download); exits 0
-skills/ideate/.venv/bin/python -m creativity_engine selftest
+skills/ideate/.venv/bin/python -m cambrian_engine selftest
 
 # unit / property / e2e tests
 skills/ideate/.venv/bin/python -m pytest -q
@@ -314,7 +314,7 @@ embedder can't be built or downloaded.
 ## Layout
 
 ```
-creativity-amplifier/                  # plugin root
+Cambrian/                  # plugin root
 ├── .claude-plugin/
 │   ├── plugin.json                    # manifest
 │   └── marketplace.json               # marketplace entry (for /plugin marketplace add)
@@ -332,7 +332,7 @@ creativity-amplifier/                  # plugin root
 │       ├── setup.sh, pyproject.toml   # dev setup wrapper; package metadata (deps in requirements*.txt)
 │       ├── requirements.txt           # runtime deps (version-bounded)
 │       ├── requirements-dev.txt       # + pytest (dev/CI); requirements-local.txt = opt-in torch embedder
-│       └── creativity_engine/         # the Python engine (CLI)
+│       └── cambrian_engine/         # the Python engine (CLI)
 ├── tests/                             # pytest (dev-only)
 ├── docs/PAPER.md                      # reference-architecture paper (rationale)
 └── README.md

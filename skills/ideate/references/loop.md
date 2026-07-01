@@ -7,7 +7,7 @@ follow this file. Everything is domain-agnostic: the only domain knowledge is th
 Set once:
 
 ```
-ENGINE = "<PYBIN>" -m creativity_engine    # <PYBIN> = contents of the engine-python.txt
+ENGINE = "<PYBIN>" -m cambrian_engine    # <PYBIN> = contents of the engine-python.txt
                                            # pointer (see step 0 for its location)
 PROJECT = <short slug for this session, e.g. "campaign-jun14">
 ```
@@ -22,11 +22,11 @@ file (`axes.json`, `candidates.json`, `event.json`):
 
 ```
 ENGINE paths --project PROJECT      # -> {"root","meta","axes",...,"tmp"}; sets up the dir
-TMP = <the "tmp" field of that output>   # e.g. ~/.creativity-amplifier/<project>/tmp
+TMP = <the "tmp" field of that output>   # e.g. ~/.cambrian/<project>/tmp
 ```
 
-Writing scratch files under `$TMP` (inside the state home, `~/.creativity-amplifier`
-or `$CREATIVITY_AMPLIFIER_HOME`) keeps the user's working directory clean and avoids
+Writing scratch files under `$TMP` (inside the state home, `~/.cambrian`
+or `$CAMBRIAN_HOME`) keeps the user's working directory clean and avoids
 collisions across concurrent sessions. Never write these files to the cwd.
 
 ---
@@ -72,8 +72,8 @@ Re-read the pointer afterwards. **If it still fails**, show the fresh tail of
 `provision.log` again alongside the foreground error and stop — the combination is
 the actionable diagnosis (e.g. Python 3.11+ missing, or a wheel that won't build on
 this OS). For the higher-fidelity English-only embedder, the user installs
-`requirements-local.txt` and sets `CREATIVITY_EMBEDDER=local`; a hosted embedder is
-`CREATIVITY_EMBEDDER=api` plus provider env vars (a stub until wired up).
+`requirements-local.txt` and sets `CAMBRIAN_EMBEDDER=local`; a hosted embedder is
+`CAMBRIAN_EMBEDDER=api` plus provider env vars (a stub until wired up).
 
 ---
 

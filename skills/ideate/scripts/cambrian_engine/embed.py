@@ -1,6 +1,6 @@
 """Pluggable text embeddings + near-duplicate suppression.
 
-Four providers, selected by the ``CREATIVITY_EMBEDDER`` environment variable:
+Four providers, selected by the ``CAMBRIAN_EMBEDDER`` environment variable:
 
 * ``static`` — model2vec ``minishlab/potion-multilingual-128M`` (256-dim, **101
   languages**, distilled from ``BAAI/bge-m3``, MIT). Static embeddings, so
@@ -24,7 +24,7 @@ cosine similarity is a plain dot product.
 Note: ``static`` (256-dim) and ``local`` (384-dim) produce different-width,
 incompatible geometries; ``pipeline._guard_embedding_dim`` refuses to mix them
 within one project, so switching the default is breaking for projects persisted
-under the old default (re-embed, or pin ``CREATIVITY_EMBEDDER=local``).
+under the old default (re-embed, or pin ``CAMBRIAN_EMBEDDER=local``).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-ENV_VAR = "CREATIVITY_EMBEDDER"
+ENV_VAR = "CAMBRIAN_EMBEDDER"
 DEFAULT_PROVIDER = "static"
 DEFAULT_STATIC_MODEL = "minishlab/potion-multilingual-128M"
 DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
@@ -203,8 +203,8 @@ class APIEmbedder(Embedder):
     name = "api"
 
     def __init__(self):
-        self.provider = os.environ.get("CREATIVITY_EMBED_API", "voyage")
-        self.api_key = os.environ.get("CREATIVITY_EMBED_API_KEY", "")
+        self.provider = os.environ.get("CAMBRIAN_EMBED_API", "voyage")
+        self.api_key = os.environ.get("CAMBRIAN_EMBED_API_KEY", "")
         self.dim = 0
 
     def _embed_raw(self, texts: List[str]) -> np.ndarray:  # pragma: no cover
@@ -218,7 +218,7 @@ _CACHE: dict = {}
 
 
 def get_embedder(provider: Optional[str] = None) -> Embedder:
-    """Return the embedder selected by ``provider`` or ``$CREATIVITY_EMBEDDER``.
+    """Return the embedder selected by ``provider`` or ``$CAMBRIAN_EMBEDDER``.
 
     Cached per-provider so repeated calls reuse the (lazily loaded) model.
     """

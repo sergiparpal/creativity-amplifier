@@ -6,8 +6,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from creativity_engine import embed
-from creativity_engine.embed import (
+from cambrian_engine import embed
+from cambrian_engine.embed import (
     DEFAULT_DEDUP_TAU,
     HashingEmbedder,
     dedupe,
@@ -108,7 +108,7 @@ def test_provider_switch_loads_without_import_errors():
 
 def test_default_provider_is_static(monkeypatch):
     # The torch-free multilingual embedder is the default for real runs: with no
-    # CREATIVITY_EMBEDDER set, get_embedder() resolves to 'static'.
+    # CAMBRIAN_EMBEDDER set, get_embedder() resolves to 'static'.
     assert embed.DEFAULT_PROVIDER == "static"
     reset_cache()
     monkeypatch.delenv(embed.ENV_VAR, raising=False)

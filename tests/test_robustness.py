@@ -1,7 +1,7 @@
 """Regression + coverage tests for the robustness fixes.
 
 Covers: corrupt/torn persistence files, non-finite agent input, concurrent pins,
-the CREATIVITY_DEBUG truthiness contract, the embedding-dimension guard, the
+the CAMBRIAN_DEBUG truthiness contract, the embedding-dimension guard, the
 open-axis re-key merge, and flat-vector originality input.
 """
 
@@ -12,9 +12,9 @@ import threading
 import numpy as np
 import pytest
 
-from creativity_engine import pipeline
-from creativity_engine.archive import Archive, continuous_bin
-from creativity_engine.config import (
+from cambrian_engine import pipeline
+from cambrian_engine.archive import Archive, continuous_bin
+from cambrian_engine.config import (
     Axis,
     Candidate,
     ConfigError,
@@ -22,8 +22,8 @@ from creativity_engine.config import (
     axes_spec_from_dict,
     debug_enabled,
 )
-from creativity_engine.originality import originality_scores
-from creativity_engine.state import State
+from cambrian_engine.originality import originality_scores
+from cambrian_engine.state import State
 
 
 # --------------------------------------------------------------------------- #
@@ -62,7 +62,7 @@ def test_read_json_corrupt_file_raises_configerror(home):
 # is the realistic end-to-end check.
 # --------------------------------------------------------------------------- #
 def test_file_lock_is_mutually_exclusive(home):
-    from creativity_engine.state import _file_lock
+    from cambrian_engine.state import _file_lock
 
     st = State("p").ensure()
     target = st.pins_path("d")
@@ -155,7 +155,7 @@ def test_axis_non_integer_bins_raises_configerror():
 
 
 # --------------------------------------------------------------------------- #
-# M7: CREATIVITY_DEBUG truthiness contract
+# M7: CAMBRIAN_DEBUG truthiness contract
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
     "value,expected",
@@ -166,12 +166,12 @@ def test_axis_non_integer_bins_raises_configerror():
     ],
 )
 def test_debug_enabled(monkeypatch, value, expected):
-    monkeypatch.setenv("CREATIVITY_DEBUG", value)
+    monkeypatch.setenv("CAMBRIAN_DEBUG", value)
     assert debug_enabled() is expected
 
 
 def test_debug_enabled_unset(monkeypatch):
-    monkeypatch.delenv("CREATIVITY_DEBUG", raising=False)
+    monkeypatch.delenv("CAMBRIAN_DEBUG", raising=False)
     assert debug_enabled() is False
 
 

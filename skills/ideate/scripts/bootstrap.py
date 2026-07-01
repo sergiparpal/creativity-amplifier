@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform, self-provisioning bootstrap for the creativity engine.
+"""Cross-platform, self-provisioning bootstrap for the Cambrian engine.
 
 This is the single source of truth for building the engine's virtualenv. It is
 invoked three ways, all idempotent and safe to re-run:
@@ -16,7 +16,7 @@ What it does (torch-free multilingual stack by default):
 * installs ``requirements.txt`` (model2vec / numpy / scikit-learn / pyyaml — the
   **static** ``minishlab/potion-multilingual-128M`` embedder is the default, ~120 MB
   and numpy-only at inference; the heavier ``local`` bge / sentence-transformers
-  embedder is opt-in via ``requirements-local.txt``) plus the ``creativity_engine``
+  embedder is opt-in via ``requirements-local.txt``) plus the ``cambrian_engine``
   package (``uv pip`` if available, else ``pip``);
 * records the resolved venv interpreter path in ``<venv>/engine-python.txt`` so the
   skill can find it on any OS without hard-coding ``bin/python`` vs
@@ -25,7 +25,7 @@ What it does (torch-free multilingual stack by default):
 Where the venv lives (first match wins):
 
 1. ``--venv PATH``                       (explicit; passed by the skill)
-2. ``$CREATIVITY_AMPLIFIER_VENV``        (explicit override)
+2. ``$CAMBRIAN_VENV``        (explicit override)
 3. ``$CLAUDE_PLUGIN_DATA/venv``          (installed via marketplace — persists across
                                           plugin updates; the recommended location)
 4. ``<skill_dir>/.venv``                 (developer fallback: ``--plugin-dir .`` / shell)
@@ -64,12 +64,12 @@ SKILL_DIR = SCRIPT_DIR.parent                     # skills/ideate
 REQS = SCRIPT_DIR / "requirements.txt"
 REQS_DEV = SCRIPT_DIR / "requirements-dev.txt"  # editable/dev installs only (adds pytest)
 PYPROJECT = SCRIPT_DIR / "pyproject.toml"
-ENGINE_PKG = SCRIPT_DIR / "creativity_engine"
+ENGINE_PKG = SCRIPT_DIR / "cambrian_engine"
 
 MIN_PY = (3, 11)
 PTR_NAME = "engine-python.txt"      # interpreter pointer, written inside the venv dir
 STAMP_NAME = "install.stamp"        # content hash of the install inputs
-LOCK_NAME = ".cae-provision.lock"   # atomic lock dir, kept beside the venv
+LOCK_NAME = ".cambrian-provision.lock"   # atomic lock dir, kept beside the venv
 STALE_LOCK_SECS = 30 * 60           # treat a lock older than this as abandoned
 LOG_NAME = "provision.log"          # where the detached worker logs
 SCHEMA = "1"                        # bump to force every venv to rebuild
@@ -94,7 +94,7 @@ def resolve_venv_dir(explicit: str | None = None) -> Path:
     if chosen:
         return Path(chosen).expanduser().resolve()
 
-    override = _clean(os.environ.get("CREATIVITY_AMPLIFIER_VENV"))
+    override = _clean(os.environ.get("CAMBRIAN_VENV"))
     if override:
         return Path(override).expanduser().resolve()
 
@@ -260,7 +260,7 @@ def install_deps(py: Path, uv: str | None, editable: bool) -> None:
     print("[bootstrap] Verifying core imports", flush=True)
     run([
         str(py), "-c",
-        "import numpy, sklearn, yaml, creativity_engine; "
+        "import numpy, sklearn, yaml, cambrian_engine; "
         "print('[bootstrap] core imports OK')",
     ])
 
@@ -409,7 +409,7 @@ def spawn_background(venv_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Provision the creativity engine venv.")
+    parser = argparse.ArgumentParser(description="Provision the Cambrian engine venv.")
     parser.add_argument("--venv", default=None, help="explicit venv directory")
     parser.add_argument(
         "--background",

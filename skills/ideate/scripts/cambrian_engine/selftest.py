@@ -506,11 +506,11 @@ def run(project: str = "selftest", live: bool = False, seed: int = 0,
     # in a throwaway temp home instead. Callers that pass a home (the test suite)
     # already isolate themselves and skip this.
     if home is None:
-        with tempfile.TemporaryDirectory(prefix="creativity-selftest-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="cambrian-selftest-") as tmp:
             return run(project=project, live=live, seed=seed, home=Path(tmp))
 
     # Deterministic embedder unless a live run is explicitly requested. Save and
-    # restore $CREATIVITY_EMBEDDER so running the self-test never mutates the
+    # restore $CAMBRIAN_EMBEDDER so running the self-test never mutates the
     # caller's global env (the test suite calls run() in-process); the cache is
     # reset on both ends so neither the self-test nor the caller inherits a stale
     # embedder built under the other's setting.

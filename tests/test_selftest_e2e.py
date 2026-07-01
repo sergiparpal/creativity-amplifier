@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from creativity_engine import selftest
-from creativity_engine.__main__ import main
-from creativity_engine.selftest import MARGIN_DPP, MARGIN_MPD, MARGIN_VENDI
+from cambrian_engine import selftest
+from cambrian_engine.__main__ import main
+from cambrian_engine.selftest import MARGIN_DPP, MARGIN_MPD, MARGIN_VENDI
 
 
 @pytest.fixture

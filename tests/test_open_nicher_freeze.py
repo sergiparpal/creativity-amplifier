@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from creativity_engine import pipeline
-from creativity_engine.archive import Archive, CVTNicher
-from creativity_engine.config import axes_spec_from_dict
-from creativity_engine.embed import get_embedder
-from creativity_engine.state import State
+from cambrian_engine import pipeline
+from cambrian_engine.archive import Archive, CVTNicher
+from cambrian_engine.config import axes_spec_from_dict
+from cambrian_engine.embed import get_embedder
+from cambrian_engine.state import State
 
 SPEC = {
     "domain": "freeze-test",

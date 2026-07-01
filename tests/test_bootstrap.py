@@ -18,7 +18,7 @@ _BOOT_PATH = Path(__file__).resolve().parents[1] / "skills/ideate/scripts/bootst
 
 
 def _load_bootstrap():
-    spec = importlib.util.spec_from_file_location("cae_bootstrap", _BOOT_PATH)
+    spec = importlib.util.spec_from_file_location("cambrian_bootstrap", _BOOT_PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -31,7 +31,7 @@ bootstrap = _load_bootstrap()
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Drop any inherited provisioning env so resolution is deterministic."""
-    for var in ("CREATIVITY_AMPLIFIER_VENV", "CLAUDE_PLUGIN_DATA"):
+    for var in ("CAMBRIAN_VENV", "CLAUDE_PLUGIN_DATA"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -49,14 +49,14 @@ def test_clean_drops_empty_and_unsubstituted():
 
 
 def test_resolve_priority_explicit_arg_wins(tmp_path, monkeypatch):
-    monkeypatch.setenv("CREATIVITY_AMPLIFIER_VENV", str(tmp_path / "env"))
+    monkeypatch.setenv("CAMBRIAN_VENV", str(tmp_path / "env"))
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
     got = bootstrap.resolve_venv_dir(str(tmp_path / "explicit"))
     assert got == (tmp_path / "explicit").resolve()
 
 
 def test_resolve_priority_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("CREATIVITY_AMPLIFIER_VENV", str(tmp_path / "env"))
+    monkeypatch.setenv("CAMBRIAN_VENV", str(tmp_path / "env"))
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
     assert bootstrap.resolve_venv_dir(None) == (tmp_path / "env").resolve()
 

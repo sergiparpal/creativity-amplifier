@@ -501,7 +501,7 @@ def _guard_embedding_dim(
         raise config.ConfigError(
             f"project {project!r} has {existing_dim}-dim embeddings but the "
             f"current embedder ({embedder.name!r}) produces {vecs.shape[1]}-dim "
-            f"vectors; reuse the original embedder ($CREATIVITY_EMBEDDER) or "
+            f"vectors; reuse the original embedder ($CAMBRIAN_EMBEDDER) or "
             f"start a fresh project."
         )
 

@@ -37,13 +37,13 @@ class ConfigError(ValueError):
 
 
 def debug_enabled() -> bool:
-    """Whether ``CREATIVITY_DEBUG`` requests full tracebacks instead of clean errors.
+    """Whether ``CAMBRIAN_DEBUG`` requests full tracebacks instead of clean errors.
 
     Treats unset/empty and the explicit off-values ``0``/``false``/``no``/``off``
-    as disabled, so ``CREATIVITY_DEBUG=0`` doesn't accidentally *enable* debugging
+    as disabled, so ``CAMBRIAN_DEBUG=0`` doesn't accidentally *enable* debugging
     (a bare ``os.environ.get`` would, since ``"0"`` is truthy).
     """
-    return os.environ.get("CREATIVITY_DEBUG", "").strip().lower() not in (
+    return os.environ.get("CAMBRIAN_DEBUG", "").strip().lower() not in (
         "", "0", "false", "no", "off",
     )
 
@@ -664,7 +664,7 @@ def load_axes_and_engine(
 
 def generic_axes_path() -> Path:
     """Absolute path to the bundled neutral fallback ``generic.yaml``."""
-    # creativity_engine/config.py -> .../skills/ideate/scripts/creativity_engine
+    # cambrian_engine/config.py -> .../skills/ideate/scripts/cambrian_engine
     # generic.yaml -> .../skills/ideate/config/domains/generic.yaml
     skill_dir = Path(__file__).resolve().parents[2]
     return skill_dir / "config" / "domains" / "generic.yaml"

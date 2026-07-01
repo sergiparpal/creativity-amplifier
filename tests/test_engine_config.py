@@ -11,9 +11,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from creativity_engine import config, embed, memory, monitor, pipeline
-from creativity_engine.config import EngineConfig
-from creativity_engine.state import State
+from cambrian_engine import config, embed, memory, monitor, pipeline
+from cambrian_engine.config import EngineConfig
+from cambrian_engine.state import State
 
 
 def test_defaults_match_module_constants():

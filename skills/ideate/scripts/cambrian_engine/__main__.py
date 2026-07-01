@@ -1,4 +1,4 @@
-"""Command-line entry point: ``python -m creativity_engine <cmd> ...``.
+"""Command-line entry point: ``python -m cambrian_engine <cmd> ...``.
 
 Every command reads/writes JSON and takes ``--project`` plus, where relevant,
 ``--axes`` / ``--seed``. Output goes to stdout as JSON; errors print to stderr
@@ -22,7 +22,7 @@ def _emit(obj: Any) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="creativity_engine",
+        prog="cambrian_engine",
         description="Deterministic diversity engine for the ideate skill.",
     )
     sub = p.add_subparsers(dest="command", required=True)

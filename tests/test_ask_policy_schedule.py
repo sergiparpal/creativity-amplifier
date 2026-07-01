@@ -9,9 +9,9 @@ This asserts no value improvement — that is a hypothesis validated offline, no
 
 from __future__ import annotations
 
-from creativity_engine import config, memory, pipeline, selftest
-from creativity_engine.config import EngineConfig
-from creativity_engine.state import State
+from cambrian_engine import config, memory, pipeline, selftest
+from cambrian_engine.config import EngineConfig
+from cambrian_engine.state import State
 
 
 def test_schedule_off_by_default_is_flat():

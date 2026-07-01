@@ -1,12 +1,12 @@
 {
   "name": "sergiparpal",
-  "description": "Creativity Amplifier — a domain-agnostic ideation plugin backed by a local deterministic diversity engine.",
+  "description": "Cambrian — a domain-agnostic ideation plugin backed by a local deterministic diversity engine.",
   "owner": {
     "name": "sergiparpal"
   },
   "plugins": [
     {
-      "name": "creativity-amplifier",
+      "name": "cambrian",
       "source": "./",
       "description": "Domain-agnostic creative ideation: blind-variation + diverse-archive loop backed by a local deterministic diversity engine (embeddings, MAP-Elites, k-NN novelty, DPP, anti-collapse monitor)."
     }

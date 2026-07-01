@@ -1,7 +1,7 @@
 """Per-session orchestration context.
 
 A :class:`Session` bundles the four things every CLI command needs — the
-on-disk :class:`~creativity_engine.state.State` handle, the resolved preference
+on-disk :class:`~cambrian_engine.state.State` handle, the resolved preference
 **domain** (the memory namespace), the axes **spec**, and the **embedder** —
 constructed once and resolved lazily.
 

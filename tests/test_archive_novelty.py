@@ -11,10 +11,10 @@ import importlib
 import numpy as np
 import pytest
 
-from creativity_engine import archive as archive_mod
-from creativity_engine import novelty
-from creativity_engine.archive import Archive, CVTNicher, compute_niche, continuous_bin
-from creativity_engine.config import axes_spec_from_dict
+from cambrian_engine import archive as archive_mod
+from cambrian_engine import novelty
+from cambrian_engine.archive import Archive, CVTNicher, compute_niche, continuous_bin
+from cambrian_engine.config import axes_spec_from_dict
 
 
 def _unit(v):
@@ -144,7 +144,7 @@ def test_archive_round_trips_through_dict():
 def test_no_judge_module_in_engine():
     # Judging is done by the agent, never in Python. There is no judge module.
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("creativity_engine.judge")
+        importlib.import_module("cambrian_engine.judge")
 
 
 def test_geometry_modules_expose_no_judge_symbol():

@@ -8,8 +8,8 @@ that the locked commands still work end to end.
 
 from __future__ import annotations
 
-from creativity_engine import config, pipeline
-from creativity_engine.state import State
+from cambrian_engine import config, pipeline
+from cambrian_engine.state import State
 
 
 def _generic():
@@ -36,7 +36,7 @@ def test_project_lock_sequential_acquisitions_do_not_leak(home):
 def test_ingest_releases_lock_so_next_cycle_proceeds(home):
     # Two sequential ingests must both run (the first releases the lock on exit), and
     # the lock dir must not linger afterwards.
-    from creativity_engine import selftest
+    from cambrian_engine import selftest
 
     axes = _generic()
     pipeline.init_project("p", axes, seed=0, home=home)

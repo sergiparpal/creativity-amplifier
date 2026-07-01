@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from creativity_engine import pipeline
-from creativity_engine.archive import Archive
-from creativity_engine.config import axes_spec_from_dict
+from cambrian_engine import pipeline
+from cambrian_engine.archive import Archive
+from cambrian_engine.config import axes_spec_from_dict
 
 SPEC = axes_spec_from_dict(
     {"domain": "t", "axes": [{"name": "m", "type": "open", "primary_novelty": True}]}
@@ -73,7 +73,7 @@ def test_ingest_runs_with_tiny_cap(home, monkeypatch):
     res = pipeline.ingest("capproj", gen(1), axes, seed=0, home=home)
     assert res["slate"]  # still produces a slate
     # the reference the next cycle would use is bounded by the cap
-    from creativity_engine.state import State
+    from cambrian_engine.state import State
 
     arc = Archive.from_dict(SPEC, State("capproj", home=home).read_archive())
     emb = State("capproj", home=home).read_embeddings()

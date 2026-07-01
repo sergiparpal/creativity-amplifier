@@ -4,8 +4,8 @@ name: CI
 # and it ships a real correctness contract (the engine `selftest`) plus a hermetic test
 # suite. This workflow protects that matrix on every push and PR.
 #
-# Hermeticity: `tests/conftest.py` forces `CREATIVITY_EMBEDDER=hash` and an isolated
-# `CREATIVITY_AMPLIFIER_HOME`, and `selftest` forces the `hash` embedder internally, so
+# Hermeticity: `tests/conftest.py` forces `CAMBRIAN_EMBEDDER=hash` and an isolated
+# `CAMBRIAN_HOME`, and `selftest` forces the `hash` embedder internally, so
 # **no model weights are ever downloaded** in CI. We also pin the env var below as a
 # belt-and-suspenders guarantee.
 
@@ -31,7 +31,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     env:
       # Guarantee the deterministic, download-free embedder everywhere.
-      CREATIVITY_EMBEDDER: hash
+      CAMBRIAN_EMBEDDER: hash
     steps:
       - uses: actions/checkout@v6
 
@@ -52,7 +52,7 @@ jobs:
         run: pytest -q
 
       - name: Run engine self-test (correctness contract)
-        run: python -m creativity_engine selftest
+        run: python -m cambrian_engine selftest
 
   bootstrap:
     # The provisioner (venv build, lock, content stamp, OS-specific interpreter

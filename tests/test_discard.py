@@ -5,8 +5,8 @@ veto applied only to the presented/parent pool — never wired into novelty/DPP/
 
 from __future__ import annotations
 
-from creativity_engine import config, pipeline, selftest
-from creativity_engine.state import State
+from cambrian_engine import config, pipeline, selftest
+from cambrian_engine.state import State
 
 
 def _generic():
